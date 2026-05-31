@@ -10,7 +10,7 @@ typedef struct v2D {
 
 typedef struct application application_t;
 
-#define NUMPARTICLES    2048
+#define NUMPARTICLES    1024
 #define MAXNUMCLASSES   8
 
 // index of each color class within color[]
@@ -26,7 +26,7 @@ typedef enum classifier {
 } class_t;
 
 #define RGBA_WHITE  255, 255, 255, 255
-#define RGBA_BLACK  0.0f, 0.0f, 0.0f, 0.0f
+#define RGBA_BLACK    0,   0,   0, 255
 
 typedef struct particle {
     vector2D_t position;        // position of the particle (x, y)

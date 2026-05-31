@@ -20,12 +20,9 @@ int init_application(application_t *application) {
         return 0;
     }
 
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-
     application->height = DEFAULT_HEIGHT;
     application->width = DEFAULT_WIDTH;
+    application->delta_time = 0.0F;
 
     // initialize the window
     application->window = SDL_CreateWindow("Particle Life", DEFAULT_WIDTH, DEFAULT_HEIGHT, SDL_WINDOW_OPENGL);
@@ -43,28 +40,12 @@ int init_application(application_t *application) {
     }
 
     // Initialize the renderer
-    application->gl_context = SDL_GL_CreateContext(application->window);
-    if (application->gl_context == NULL) {
-        printf("OpenGL Context Creation failed. ERROR: %s\n", SDL_GetError());
-        SDL_DestroyWindow(application->window);
+    application->renderer = SDL_CreateRenderer(application->window, NULL);
+    if (application->renderer == NULL) {
+        printf("Renderer Creation failed. ERROR: %s\n", SDL_GetError());
         SDL_Quit();
         return 0;
     }
-
-    // Initialize GLAD with the function to load the address of OpenGL function pointers
-    if (!gladLoadGLLoader((GLADloadproc) SDL_GL_GetProcAddress)) {
-        printf("Failed to initialize GLAD\n");
-        SDL_GL_DestroyContext(application->gl_context);
-        SDL_DestroyWindow(application->window);
-        SDL_Quit();
-        return 0;
-    }
-
-    // Set the OpenGL rendering window size
-    glViewport(0, 0, application->width, application->height);
-    
-    // print OpenGL version
-    printf("OpenGL %s\n", glGetString(GL_VERSION));
 
     application->state = RUNNING;
 
@@ -73,11 +54,12 @@ int init_application(application_t *application) {
 
 // destroy_application : destroys the allocated resources for the application
 int destroy_application(application_t *application) {
-    if (application->state != RUNNING || application->state != PAUSED) return 0;
+    if (application->state != RUNNING && application->state != PAUSED) return 0;
 
-    // Destroy Open GL Context
-    if (application->gl_context)
-        SDL_GL_DestroyContext(application->gl_context);
+    if (application->renderer) {
+        SDL_DestroyRenderer(application->renderer);
+        application->renderer = NULL;
+    }
 
     // Destroy Window
     if (application->window) {
@@ -103,7 +85,6 @@ static void handle_events(application_t *application) {
             }
             case SDL_EVENT_WINDOW_RESIZED: {
                 SDL_GetWindowSize(application->window, &application->width, &application->height);
-                glViewport(0, 0, application->width, application->height);
                 break;
             }
             case SDL_EVENT_MOUSE_MOTION:
@@ -117,25 +98,25 @@ static void handle_events(application_t *application) {
 
 // mainloop : the application main loop
 int mainloop(application_t *application) {
-    // particle_t *particles = init_particles(application, NUMPARTICLES, MAXNUMCLASSES);
+    particle_t *particles = init_particles(application, NUMPARTICLES, MAXNUMCLASSES);
 
     while (application->state == RUNNING || application->state == PAUSED) {
         handle_events(application);
 
-        // Set draw color to black and clear 
-        glClearColor(RGBA_BLACK);
-        glClear(GL_COLOR_BUFFER_BIT);
-        // Draw particles on the screen
-        // for (int i = 0; i < NUMPARTICLES; i++)
-            // draw_particle(application, particles[i]);
-        
-        // Present the renderer (update the screen)
-        SDL_GL_SwapWindow(application->window);
+        // Set draw color to black and clear
+        SDL_SetRenderDrawColor(application->renderer, RGBA_BLACK);  // R, G, B, A
+        SDL_RenderClear(application->renderer);
 
-        // update_particles(application, particles);
+        // Draw particles on the screen
+        for (int i = 0; i < NUMPARTICLES; i++)
+            draw_particle(application, particles[i]);
+
+        update_particles(application, particles);
+
+        SDL_RenderPresent(application->renderer);
     }
 
-    // destroy_particles(particles);
+    destroy_particles(particles);
 
     return 1;
 }

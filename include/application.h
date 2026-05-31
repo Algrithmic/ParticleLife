@@ -13,9 +13,10 @@ enum state {
 
 typedef struct application {
     SDL_Window *window;
-    SDL_GLContext gl_context;
+    SDL_Renderer *renderer;
     int height;
     int width;
+    double delta_time;
     enum state state;
 } application_t;
 

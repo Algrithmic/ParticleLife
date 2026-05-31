@@ -74,8 +74,8 @@ static float force(float r, float alpha) {
 
 // wrap : Check distance wrapped across screen and adjust deltas
 static void wrap(application_t *application, float *dx, float *dy) {
-    if (*dx >  application->width  / 2)  *dx -= application->width;
-    if (*dx < -application->width  / 2)  *dx += application->width;
+    if (*dx >  application->width  / 2) *dx -= application->width;
+    if (*dx < -application->width  / 2) *dx += application->width;
     if (*dy >  application->height / 2) *dy -= application->height;
     if (*dy < -application->height / 2) *dy += application->height;
 }
@@ -180,7 +180,7 @@ static SDL_Color rgba[MAXNUMCLASSES] = {
     { 175,  82, 222, 255 },
     { 255, 149,   0, 255 },
     { 50,  173, 230, 255 },
-    { 255, 127, 255, 255 }
+    { 255, 255, 255, 255 }
 };
 
 // draw_particle : draws a particle to the screen
@@ -210,7 +210,7 @@ void draw_particle(application_t *application, particle_t particle) {
 
         fill_particle(application, particle.position.x - x, particle.position.x + x, particle.position.y, y);
 
-        if (x != y) {}
+        if (x != y)
             fill_particle(application, particle.position.x - y, particle.position.x + y, particle.position.y, x);
     }
 }
