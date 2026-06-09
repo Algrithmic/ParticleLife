@@ -166,8 +166,8 @@ void update_particles(application_t *application, particle_t *particles) {
 // fill_particle : fills in the particle based on it's bounds
 static void fill_particle(application_t *application, int start, int end, int particle_y, int y_offset) {
     for (int i = start; i < end + 1; i++) {
-        SDL_RenderPoint(application->renderer, i, particle_y + y_offset);
-        SDL_RenderPoint(application->renderer, i, particle_y - y_offset);
+        // SDL_RenderPoint(application->renderer, i, particle_y + y_offset);
+        // SDL_RenderPoint(application->renderer, i, particle_y - y_offset);
     }
 }
 
@@ -187,7 +187,7 @@ static SDL_Color rgba[MAXNUMCLASSES] = {
 void draw_particle(application_t *application, particle_t particle) {
     // set draw color of the particle
     // R, G, B, A
-    SDL_SetRenderDrawColor(application->renderer, rgba[particle.class].r, rgba[particle.class].g, rgba[particle.class].b, rgba[particle.class].a);
+    // SDL_SetRenderDrawColor(application->renderer, rgba[particle.class].r, rgba[particle.class].g, rgba[particle.class].b, rgba[particle.class].a);
 
     // midpoint algorithm for drawing circles
     fill_particle(application, particle.position.x - RADIUS, particle.position.x + RADIUS, particle.position.y, 0);

@@ -6,6 +6,7 @@
 
 #include "../include/application.h"
 #include "../include/particle.h"
+#include "../include/triangle.h"
 
 #define DEFAULT_HEIGHT  800
 #define DEFAULT_WIDTH   1800
@@ -19,6 +20,10 @@ int init_application(application_t *application) {
         printf("SDL Initialization failed. ERROR: %s\n", SDL_GetError());
         return 0;
     }
+
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 
     application->height = DEFAULT_HEIGHT;
     application->width = DEFAULT_WIDTH;
@@ -40,12 +45,20 @@ int init_application(application_t *application) {
     }
 
     // Initialize the renderer
-    application->renderer = SDL_CreateRenderer(application->window, NULL);
-    if (application->renderer == NULL) {
+    application->context = SDL_GL_CreateContext(application->window);
+    if (application->context == NULL) {
         printf("Renderer Creation failed. ERROR: %s\n", SDL_GetError());
+        SDL_DestroyWindow(application->window);
         SDL_Quit();
         return 0;
     }
+
+    // initialize GLAD in SDL for looking up OpenGL function pointers
+    if (!gladLoadGLLoader((GLADloadproc) SDL_GL_GetProcAddress)) {
+        printf("Failed to initialize GLAD. ERROR: %s\n", SDL_GetError());
+    }
+
+    glViewport(0, 0, DEFAULT_WIDTH, DEFAULT_HEIGHT);
 
     application->state = RUNNING;
 
@@ -56,10 +69,8 @@ int init_application(application_t *application) {
 int destroy_application(application_t *application) {
     if (application->state != RUNNING && application->state != PAUSED) return 0;
 
-    if (application->renderer) {
-        SDL_DestroyRenderer(application->renderer);
-        application->renderer = NULL;
-    }
+    if (application->context) 
+        SDL_GL_DestroyContext(application->context);
 
     // Destroy Window
     if (application->window) {
@@ -85,6 +96,7 @@ static void handle_events(application_t *application) {
             }
             case SDL_EVENT_WINDOW_RESIZED: {
                 SDL_GetWindowSize(application->window, &application->width, &application->height);
+                glViewport(0, 0, application->width, application->height);
                 break;
             }
             case SDL_EVENT_MOUSE_MOTION:
@@ -99,21 +111,27 @@ static void handle_events(application_t *application) {
 // mainloop : the application main loop
 int mainloop(application_t *application) {
     particle_t *particles = init_particles(application, NUMPARTICLES, MAXNUMCLASSES);
+    uint32_t program = link_program();
+    uint32_t vao = init_shaders();
 
     while (application->state == RUNNING || application->state == PAUSED) {
         handle_events(application);
 
         // Set draw color to black and clear
-        SDL_SetRenderDrawColor(application->renderer, RGBA_BLACK);  // R, G, B, A
-        SDL_RenderClear(application->renderer);
+        glClearColor(RGBA_BLACK);  // R, G, B, A
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        glUseProgram(program);
+        glBindVertexArray(vao);
+        glDrawArrays(GL_TRIANGLES, 0, 3);
 
         // Draw particles on the screen
-        for (int i = 0; i < NUMPARTICLES; i++)
-            draw_particle(application, particles[i]);
+        // for (int i = 0; i < NUMPARTICLES; i++)
+        //     draw_particle(application, particles[i]);
 
-        update_particles(application, particles);
+        // update_particles(application, particles);
 
-        SDL_RenderPresent(application->renderer);
+        SDL_GL_SwapWindow(application->window);
     }
 
     destroy_particles(particles);

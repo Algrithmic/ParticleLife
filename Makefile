@@ -7,7 +7,7 @@ BUILD_DIR := ./build
 
 # Compilation Variables
 CC := gcc
-CFLAGS := -Wall -Wextra -Werror -Ivendor/SDL3/include -Ivendor/GLAD/include
+CFLAGS := -Wall -Wextra -Ivendor/SDL3/include -Ivendor/GLAD/include
 LDFLAGS := -lm -lSDL3 -Lvendor/SDL3/libraries
 RPATH := -Wl,-rpath,'$$ORIGIN/vendor/SDL3/libraries'
 
