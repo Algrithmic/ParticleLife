@@ -114,6 +114,7 @@ int mainloop(application_t *application) {
     uint32_t program = link_program();
     uint32_t vao = init_shaders();
 
+    glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
     while (application->state == RUNNING || application->state == PAUSED) {
         handle_events(application);
 
@@ -123,7 +124,8 @@ int mainloop(application_t *application) {
 
         glUseProgram(program);
         glBindVertexArray(vao);
-        glDrawArrays(GL_TRIANGLES, 0, 3);
+        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+        glBindVertexArray(0);
 
         // Draw particles on the screen
         // for (int i = 0; i < NUMPARTICLES; i++)
