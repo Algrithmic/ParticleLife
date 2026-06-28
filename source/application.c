@@ -69,25 +69,52 @@ int init_application(application_t *application) {
 int init_simulation(application_t *application) {
     application->particles = init_particles(application, NUM_PARTICLES, MAX_NUM_CLASSES);
 
-    application->shader_data = init_shaders(
-        application->particles, 
-        2, 
-        "./shaders/vertex.vert", 
-        "./shaders/fragment.frag"
-    );
-    if (!application->shader_data.ok) {
-        printf("ERROR: Failed to initialize shaders\n");
+    if (!init_graphics(&application->shader_data, application->particles,  2,  "./shaders/vertex.vert",  "./shaders/fragment.frag")) {
+        printf("ERROR: Failed to initialize graphics shaders\n");
         return 0;
     }
 
     // Set the initial projection — the window size is already known
-    glUseProgram(application->shader_data.program);
+    glUseProgram(application->shader_data.graphics_program);
     mat4 projection;
     glm_ortho(0.0f, (float) application->width, (float) application->height, 0.0f, -1.0f, 1.0f, projection);
     glUniformMatrix4fv(
-        glGetUniformLocation(application->shader_data.program, "projection"),
+        glGetUniformLocation(application->shader_data.graphics_program, "projection"),
         1, GL_FALSE, (float *) projection
     );
+
+    // Compute Shader initialization
+    if (!init_compute(&application->shader_data, "./shaders/compute.comp")) {
+        printf("ERROR: Failed to initialize compute shaders\n");
+        return 0;
+    }
+
+    // Particles SSBO
+    uint32_t particle_ssbo;
+    glGenBuffers(1, &particle_ssbo);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, particle_ssbo);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, NUM_PARTICLES * sizeof(particle_t), application->particles, GL_DYNAMIC_DRAW);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, particle_ssbo);   // binding = 0
+
+    glBindVertexArray(application->shader_data.vao);
+    glBindBuffer(GL_ARRAY_BUFFER, particle_ssbo);
+
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(particle_t), (void *) offsetof(particle_t, position));
+    glEnableVertexAttribArray(1);
+    glVertexAttribDivisor(1, 1);
+
+    glVertexAttribIPointer(2, 1, GL_UNSIGNED_INT, sizeof(particle_t), (void *) offsetof(particle_t, class));
+    glEnableVertexAttribArray(2);
+    glVertexAttribDivisor(2, 1);
+
+    glBindVertexArray(0);
+
+    // Attraction Matrix SSBO
+    uint32_t attraction_ssbo;
+    glGenBuffers(1, &attraction_ssbo);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, attraction_ssbo);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, attraction.length * sizeof(float), attraction.matrix, GL_STATIC_DRAW);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, attraction_ssbo); // binding = 1
 
     return 1;
 }
@@ -130,7 +157,7 @@ static void handle_events(application_t *application) {
                 mat4 projection;
                 glm_ortho(0.0f, (float) application->width, (float) application->height, 0.0f, -1.0f, 1.0f, projection);
                 glUniformMatrix4fv(
-                    glGetUniformLocation(application->shader_data.program, "projection"),
+                    glGetUniformLocation(application->shader_data.graphics_program, "projection"),
                     1, GL_FALSE, (float *) projection
                 );
                 break;
@@ -146,27 +173,30 @@ static void handle_events(application_t *application) {
 
 // mainloop : the application main loop
 int mainloop(application_t *application) {
+    
     glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-
+    
     while (application->state == RUNNING || application->state == PAUSED) {
         handle_events(application);
-
+        
         // Set draw color to black and clear
         glClearColor(RGBA_BLACK);  // R, G, B, A
         glClear(GL_COLOR_BUFFER_BIT);
         
-        glUseProgram(application->shader_data.program);
-        glBindVertexArray(application->shader_data.vao);
+        // Physics
+        glUseProgram(application->shader_data.compute_program);
+        glUniform1ui(glGetUniformLocation(application->shader_data.compute_program, "nclass"),      MAX_NUM_CLASSES);
+        glUniform1ui(glGetUniformLocation(application->shader_data.compute_program, "count"),       NUM_PARTICLES);
+        glUniform1f (glGetUniformLocation(application->shader_data.compute_program, "deltaTime"),   DELTATIME);
+        glUniform2f (glGetUniformLocation(application->shader_data.compute_program, "screenSize"), (float)application->width, (float)application->height);
+        glDispatchCompute((NUM_PARTICLES + 255) / 256, 1, 1);
+        glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT);
         
-        glUniform4fv(
-            glGetUniformLocation(application->shader_data.program, "palette"), 
-            8, &rgba[0][0]
-        );
+        glUseProgram(application->shader_data.graphics_program);
+        glBindVertexArray(application->shader_data.vao);
+        glUniform4fv(glGetUniformLocation(application->shader_data.graphics_program, "palette"), 8, &rgba[0][0]);
 
-        glBindBuffer(GL_ARRAY_BUFFER, application->shader_data.vbo);
-        glBufferSubData(GL_ARRAY_BUFFER, 0, NUM_PARTICLES * sizeof(particle_t), application->particles);
-
-        glDrawArraysInstanced(GL_TRIANGLE_FAN, 0, TOTAL_VERTICES, NUM_PARTICLES);
+        glDrawArraysInstanced(GL_TRIANGLE_FAN, 0, NUM_COORDINATES, NUM_PARTICLES);
 
         // update_particles(application, application->particles);
 

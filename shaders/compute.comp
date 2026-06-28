@@ -1,0 +1,70 @@
+#version 430 core
+layout (local_size_x = 256) in;
+
+struct Particle {
+    vec2 position;
+    vec2 velocity;
+    uint colorClass;
+    uint _pad; // padding to align CPU and GPU
+};
+
+// particles
+layout (std430, binding = 0) buffer ParticleBuffer {
+    Particle particles[];
+};
+
+// attraction matrix: attraction[a * nclass + b]
+layout (std430, binding = 1) buffer AttractionBuffer {
+    float matrix[];
+};
+
+uniform uint    nclass;
+uniform uint    count;
+uniform float   deltaTime;
+uniform vec2    screenSize;
+
+float forceFn(float r, float alpha) {
+    float beta = 0.25;
+    if (r < beta) 
+        return (r / beta - 1.0) * 2.0;
+    else if (r < 1.0)
+        return alpha * (1.0 - abs(2.0 * r - 1.0 - beta) / (1.0 - beta));
+    return 0.0;
+}
+
+void main() {
+    uint i = gl_GlobalInvocationID.x;
+    if (i >= count) return;  // guard: invocations past the last particle do nothing
+
+    vec2 position_i = particles[i].position;
+    uint colorClass_i = particles[i].colorClass;
+
+    vec2 acceleration = vec2(0.0);
+
+    for (uint j = 0; j < count; j++) {
+        if (i == j) continue;
+
+        vec2 delta = particles[j].position - position_i;
+
+        // wrap delta across screen edges
+        if (delta.x >  screenSize.x / 2.0) delta.x -= screenSize.x;
+        if (delta.x < -screenSize.x / 2.0) delta.x += screenSize.x;
+        if (delta.y >  screenSize.y / 2.0) delta.y -= screenSize.y;
+        if (delta.y < -screenSize.y / 2.0) delta.y += screenSize.y;
+
+        float dist = length(delta);
+        if (dist == 0.0 || dist > 225.0) continue;
+
+        float alpha = matrix[colorClass_i * nclass + particles[j].colorClass];
+        float f     = forceFn(dist / 225.0, alpha);
+        acceleration += normalize(delta) * f;
+    }
+
+    float friction = pow(0.5, deltaTime / 2.0);  // 2.0 = FRICTIONHALFLIFE
+
+    particles[i].velocity = particles[i].velocity * friction + acceleration * deltaTime;
+
+    // update position and wrap
+    particles[i].position += particles[i].velocity * deltaTime;
+    particles[i].position = mod(particles[i].position + screenSize, screenSize);
+}

@@ -11,16 +11,16 @@
 #include "../include/particle.h"
 
 // vertices of a particle
-static float vertices[TOTAL_VERTICES] = {
+static float vertices[TOTAL_POINTS] = {
      0.000f,  0.000f,
-     2.000f,  0.000f,
-     1.247f,  1.564f,
-    -0.445f,  1.950f,
-    -1.802f,  0.868f,
-    -1.802f, -0.868f,
-    -0.445f, -1.950f,
-     1.247f, -1.564f,
-     2.000f,  0.000f,
+     1.000f,  0.000f,
+     0.623f,  0.782f,
+    -0.223f,  0.975f,
+    -0.901f,  0.434f,
+    -0.901f, -0.434f,
+    -0.223f, -0.975f,
+     0.623f, -0.782f,
+     1.000f,  0.000f,
 };
 
 // shader_compilation_status: Checks if shader file (.glsl) has been compiled successfully
@@ -129,13 +129,11 @@ static uint8_t has_extension(char const *filename, char const *extension) {
     return strcmp(dot, extension) == 0;
 }
 
-shader_t init_shaders(particle_t *particles, uint8_t count, ...) {
-    shader_t shader_data = { 0 };
-
+uint8_t init_graphics(shader_t *shader_data, particle_t *particles, uint8_t count, ...) {
     va_list args;
     va_start(args, count);  // initialization of argument list
 
-    uint32_t shader_program = glCreateProgram();
+    shader_data->graphics_program = glCreateProgram();
     uint32_t vertex_shader = 0;
     uint32_t fragment_shader = 0;
 
@@ -151,32 +149,53 @@ shader_t init_shaders(particle_t *particles, uint8_t count, ...) {
 
     va_end(args);
 
-    if (vertex_shader == 0 || fragment_shader == 0) {
+    if (!vertex_shader || !fragment_shader) {
         (void) printf("ERROR : SHADER PROGRAM - Failed to compile one or more shaders\n");
-        goto cleanup;
+        glDeleteShader(vertex_shader);
+        glDeleteShader(fragment_shader);
+        glDeleteProgram(shader_data->graphics_program);
+        return 0;
     }
 
     // Link Shaders
-    glAttachShader(shader_program, vertex_shader);
-    glAttachShader(shader_program, fragment_shader);
-    glLinkProgram(shader_program);
+    glAttachShader(shader_data->graphics_program, vertex_shader);
+    glAttachShader(shader_data->graphics_program, fragment_shader);
+    glLinkProgram(shader_data->graphics_program);
 
     glDeleteShader(vertex_shader);
     glDeleteShader(fragment_shader);
 
-    if (!program_compilation_status(shader_program))
-        goto cleanup;
+    if (!program_compilation_status(shader_data->graphics_program)) {
+        glDeleteShader(vertex_shader);
+        glDeleteShader(fragment_shader);
+        glDeleteProgram(shader_data->graphics_program);
+        return 0;
+    }
 
-    shader_data.program = shader_program;
-    init_vertices(&shader_data, particles);
-    shader_data.ok = 1;
+    init_vertices(shader_data, particles);
+    return 1;
+}
 
-    return shader_data;
+uint8_t init_compute(shader_t *shader_data, char const *filename) {
+    shader_data->compute_program = glCreateProgram();
+    uint32_t compute_shader = compile_shader(filename, GL_COMPUTE_SHADER);
 
-cleanup:
-    glDeleteShader(vertex_shader);
-    glDeleteShader(fragment_shader);
-    glDeleteProgram(shader_program);
+    if (!compute_shader) {
+        (void) printf("ERROR : SHADER PROGRAM - Failed to compile one or more shaders\n");
+        glDeleteShader(compute_shader);
+        glDeleteProgram(compute_shader);
+        return 0;
+    }
 
-    return shader_data;
+    glAttachShader(shader_data->compute_program, compute_shader);
+    glLinkProgram(shader_data->compute_program);
+    glDeleteShader(compute_shader);
+
+    if (!program_compilation_status(shader_data->compute_program)) {
+        glDeleteShader(compute_shader);
+        glDeleteProgram(compute_shader);
+        return 0;
+    }
+
+    return 1;
 }

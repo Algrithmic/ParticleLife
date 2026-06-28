@@ -10,7 +10,7 @@ typedef struct v2D {
 
 typedef struct application application_t;
 
-#define NUM_PARTICLES   1024
+#define NUM_PARTICLES   5000
 #define MAX_NUM_CLASSES 8
 
 // index of each color class within color[]
@@ -34,8 +34,9 @@ extern float rgba[MAX_NUM_CLASSES][NUM_CHANNELS];
 
 typedef struct particle {
     vector2D_t position;        // position of the particle (x, y)
-    // vector2D_t velocity;        // velocity of the particle (x, y)
+    vector2D_t velocity;        // velocity of the particle (x, y)
     class_t class;              // class (color) of the particle
+    uint32_t _padding;          // padding for CPU and GPU memory alignment
 } particle_t;
 
 #define RADIUS      2
@@ -46,10 +47,11 @@ typedef struct attraction {
     unsigned int length;
     float *matrix;
 } attraction_t;
+extern attraction_t attraction;
 
 #define MAXDISTANCE         225.0f
 #define FRICTIONHALFLIFE    2.0f
-#define DELTATIME           0.075f
+#define DELTATIME           0.050f
 
 // init_particles : creates a pointer to an array of n particles and initializes the attraction matrix
 particle_t *init_particles(application_t *application, unsigned int n, unsigned int num_classes);
