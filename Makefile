@@ -8,7 +8,7 @@ BUILD_DIR := ./build
 # Compilation Variables
 CC := gcc
 CFLAGS := -Wall -Wextra -Ivendor/SDL3/include -Ivendor/GLAD/include
-LDFLAGS := -lm -lSDL3 -Lvendor/SDL3/libraries
+LDFLAGS := -lm -lcglm -lSDL3 -Lvendor/SDL3/libraries
 RPATH := -Wl,-rpath,'$$ORIGIN/vendor/SDL3/libraries'
 
 # Create all corresponding .o files from .c filenames
@@ -22,7 +22,7 @@ GLAD_OBJ := $(BUILD_DIR)/glad.o
 # Cleanup variables
 RM := rm -rf
 
-.PHONY: all clean
+.PHONY: all clean rebuild
 
 all: $(PROGNAME)
 
@@ -45,3 +45,7 @@ $(BUILD_DIR):
 # clean up .o files and exe
 clean:
 	$(RM) $(BUILD_DIR)/*.o $(PROGNAME)
+
+# Clean up .o files and exe, then build
+rebuild: clean
+	$(MAKE) all

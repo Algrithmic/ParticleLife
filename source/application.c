@@ -1,4 +1,6 @@
 #include <stdio.h>
+#include <math.h>
+#include <cglm/cglm.h>
 
 #include "SDL.h"
 #include "SDL_video.h"
@@ -6,7 +8,7 @@
 
 #include "../include/application.h"
 #include "../include/particle.h"
-#include "../include/triangle.h"
+#include "../include/shaders.h"
 
 #define DEFAULT_HEIGHT  800
 #define DEFAULT_WIDTH   1800
@@ -58,9 +60,34 @@ int init_application(application_t *application) {
         printf("Failed to initialize GLAD. ERROR: %s\n", SDL_GetError());
     }
 
-    glViewport(0, 0, DEFAULT_WIDTH, DEFAULT_HEIGHT);
-
     application->state = RUNNING;
+
+    return 1;
+}
+
+// init_simulation : initializes the simulation particles and resources for the application
+int init_simulation(application_t *application) {
+    application->particles = init_particles(application, NUM_PARTICLES, MAX_NUM_CLASSES);
+
+    application->shader_data = init_shaders(
+        application->particles, 
+        2, 
+        "./shaders/vertex.vert", 
+        "./shaders/fragment.frag"
+    );
+    if (!application->shader_data.ok) {
+        printf("ERROR: Failed to initialize shaders\n");
+        return 0;
+    }
+
+    // Set the initial projection — the window size is already known
+    glUseProgram(application->shader_data.program);
+    mat4 projection;
+    glm_ortho(0.0f, (float) application->width, (float) application->height, 0.0f, -1.0f, 1.0f, projection);
+    glUniformMatrix4fv(
+        glGetUniformLocation(application->shader_data.program, "projection"),
+        1, GL_FALSE, (float *) projection
+    );
 
     return 1;
 }
@@ -77,6 +104,8 @@ int destroy_application(application_t *application) {
         SDL_DestroyWindow(application->window);
         application->window = NULL;
     }
+
+    destroy_particles(application->particles);
     
     // Quit subsystems
     SDL_Quit();
@@ -97,6 +126,13 @@ static void handle_events(application_t *application) {
             case SDL_EVENT_WINDOW_RESIZED: {
                 SDL_GetWindowSize(application->window, &application->width, &application->height);
                 glViewport(0, 0, application->width, application->height);
+
+                mat4 projection;
+                glm_ortho(0.0f, (float) application->width, (float) application->height, 0.0f, -1.0f, 1.0f, projection);
+                glUniformMatrix4fv(
+                    glGetUniformLocation(application->shader_data.program, "projection"),
+                    1, GL_FALSE, (float *) projection
+                );
                 break;
             }
             case SDL_EVENT_MOUSE_MOTION:
@@ -110,33 +146,32 @@ static void handle_events(application_t *application) {
 
 // mainloop : the application main loop
 int mainloop(application_t *application) {
-    particle_t *particles = init_particles(application, NUMPARTICLES, MAXNUMCLASSES);
-    uint32_t program = link_program();
-    uint32_t vao = init_shaders();
-
     glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+
     while (application->state == RUNNING || application->state == PAUSED) {
         handle_events(application);
 
         // Set draw color to black and clear
         glClearColor(RGBA_BLACK);  // R, G, B, A
         glClear(GL_COLOR_BUFFER_BIT);
+        
+        glUseProgram(application->shader_data.program);
+        glBindVertexArray(application->shader_data.vao);
+        
+        glUniform4fv(
+            glGetUniformLocation(application->shader_data.program, "palette"), 
+            8, &rgba[0][0]
+        );
 
-        glUseProgram(program);
-        glBindVertexArray(vao);
-        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-        glBindVertexArray(0);
+        glBindBuffer(GL_ARRAY_BUFFER, application->shader_data.vbo);
+        glBufferSubData(GL_ARRAY_BUFFER, 0, NUM_PARTICLES * sizeof(particle_t), application->particles);
 
-        // Draw particles on the screen
-        // for (int i = 0; i < NUMPARTICLES; i++)
-        //     draw_particle(application, particles[i]);
+        glDrawArraysInstanced(GL_TRIANGLE_FAN, 0, TOTAL_VERTICES, NUM_PARTICLES);
 
-        // update_particles(application, particles);
+        // update_particles(application, application->particles);
 
         SDL_GL_SwapWindow(application->window);
     }
-
-    destroy_particles(particles);
 
     return 1;
 }
