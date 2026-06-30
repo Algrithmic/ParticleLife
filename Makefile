@@ -2,14 +2,13 @@
 PROGNAME := ParticleLife
 SOURCE_DIR := ./source
 VENDOR_DIR := ./vendor
-INCLUDE_DIR := ./include
 BUILD_DIR := ./build
 
 # Compilation Variables
 CC := gcc
 CFLAGS := -Wall -Wextra -Ivendor/SDL3/include -Ivendor/GLAD/include
 LDFLAGS := -lm -lcglm -lSDL3 -Lvendor/SDL3/libraries
-RPATH := -Wl,-rpath,'$$ORIGIN/vendor/SDL3/libraries'
+RPATH := -Wl,-rpath,'$$ORIGIN/../vendor/SDL3/libraries'
 
 # Create all corresponding .o files from .c filenames
 SOURCES := $(wildcard $(SOURCE_DIR)/*.c)
@@ -24,10 +23,10 @@ RM := rm -rf
 
 .PHONY: all clean rebuild
 
-all: $(PROGNAME)
+all: $(BUILD_DIR)/$(PROGNAME)
 
 # link all the object files in the final program exe
-$(PROGNAME): $(OBJECTS) $(GLAD_OBJ)
+$(BUILD_DIR)/$(PROGNAME): $(OBJECTS) $(GLAD_OBJ)
 	$(CC) $^ -o $@ $(LDFLAGS) $(RPATH)
 
 # Compile each .c file into .o file
@@ -44,7 +43,7 @@ $(BUILD_DIR):
 
 # clean up .o files and exe
 clean:
-	$(RM) $(BUILD_DIR)/*.o $(PROGNAME)
+	$(RM) $(BUILD_DIR)
 
 # Clean up .o files and exe, then build
 rebuild: clean

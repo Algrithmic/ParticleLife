@@ -1,7 +1,8 @@
 #ifndef APPLICATION_H
 #define APPLICATION_H
 
-#include "../include/shaders.h"
+#include "particle.h"
+#include "shaders.h"
 
 // forward declarations
 typedef struct SDL_Window SDL_Window;
@@ -20,6 +21,7 @@ typedef struct application {
     int64_t delta_time;
     shader_t shader_data;
     particle_t *particles;
+    attraction_t attraction;
     enum state state;
 } application_t;
 

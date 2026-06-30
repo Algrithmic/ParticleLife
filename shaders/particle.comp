@@ -21,6 +21,7 @@ layout (std430, binding = 1) buffer AttractionBuffer {
 uniform uint    nclass;
 uniform uint    count;
 uniform float   deltaTime;
+uniform float   friction;
 uniform vec2    screenSize;
 
 float forceFn(float r, float alpha) {
@@ -60,7 +61,7 @@ void main() {
         acceleration += normalize(delta) * f;
     }
 
-    float friction = pow(0.5, deltaTime / 2.0);  // 2.0 = FRICTIONHALFLIFE
+    float friction = pow(0.5, deltaTime / friction);  // FRICTIONHALFLIFE
 
     particles[i].velocity = particles[i].velocity * friction + acceleration * deltaTime;
 

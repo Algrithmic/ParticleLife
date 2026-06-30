@@ -7,8 +7,8 @@
 
 #include "glad/glad.h"
 
-#include "../include/shaders.h"
-#include "../include/particle.h"
+#include "shaders.h"
+#include "particle.h"
 
 // vertices of a particle
 static float vertices[TOTAL_POINTS] = {
@@ -23,7 +23,20 @@ static float vertices[TOTAL_POINTS] = {
      1.000f,  0.000f,
 };
 
-// shader_compilation_status: Checks if shader file (.glsl) has been compiled successfully
+/**
+ * shader_compilation_status
+ *
+ * @brief Checks whether a shader object compiled successfully and logs any errors.
+ *
+ * Queries the GL_COMPILE_STATUS of the given shader and prints the info log
+ * to stdout if compilation failed.
+ *
+ * @param shader    The OpenGL shader object ID to check.
+ * @param filename  The source filename, used in the error message for identification.
+ * @return          Non-zero if compilation succeeded, 0 on failure.
+ *
+ * @note This is a static internal helper and should only be called from compile_shader().
+ */
 static int shader_compilation_status(uint32_t const shader, char const *filename) {
     int success;
     char info_log[512];
@@ -36,7 +49,23 @@ static int shader_compilation_status(uint32_t const shader, char const *filename
     return success;
 }
 
-// compile_shader: Compiles shader file "filename"
+/**
+ * compile_shader
+ *
+ * @brief Reads a GLSL shader source file from disk and compiles it.
+ *
+ * Opens the file at the given path, reads its full contents into a buffer,
+ * creates an OpenGL shader object of the specified type, and compiles it.
+ *
+ * @param filename  Path to the GLSL shader source file.
+ * @param type      OpenGL shader type (e.g. GL_VERTEX_SHADER, GL_FRAGMENT_SHADER,
+ *                  GL_COMPUTE_SHADER).
+ * @return          The compiled OpenGL shader object ID on success, or 0 on failure.
+ *
+ * @note This is a static internal helper called by init_graphics() and init_compute().
+ * @warning The caller is responsible for calling glDeleteShader() on the returned
+ *          shader ID once it has been attached to a program.
+ */
 static uint32_t compile_shader(char const *filename, uint32_t const type) {
     // open file
     FILE *shader_file;
@@ -49,6 +78,8 @@ static uint32_t compile_shader(char const *filename, uint32_t const type) {
     fseek(shader_file, 0, SEEK_END); // Seek to end of the file
     uint64_t const size = ftell(shader_file);  // Get current position (= file size)
     char *contents = (char *) malloc((size + 1) * sizeof(char));
+    if (contents == NULL) 
+        return 0;
 
     fseek(shader_file, 0, SEEK_SET); // Rewind to beginning of the file
     if (fread(contents, 1, size, shader_file) != size) {
@@ -72,7 +103,19 @@ static uint32_t compile_shader(char const *filename, uint32_t const type) {
     return shader;
 }
 
-// program_compilation_status: Checks if shader program has been compiled successfully
+/**
+ * program_compilation_status
+ *
+ * @brief Checks whether a shader program linked successfully and logs any errors.
+ *
+ * Queries the GL_LINK_STATUS of the given program and prints the info log
+ * to stdout if linking failed.
+ *
+ * @param program  The OpenGL shader program ID to check.
+ * @return         Non-zero if linking succeeded, 0 on failure.
+ *
+ * @note This is a static internal helper called by init_graphics() and init_compute().
+ */
 static int program_compilation_status(uint32_t program) {
     int success;
     char info_log[512];
@@ -85,7 +128,22 @@ static int program_compilation_status(uint32_t program) {
     return success;
 }
 
-// init_vertices: Initializes all vertices
+/**
+ * init_vertices
+ *
+ * @brief Allocates and configures the VAO and VBOs for particle rendering.
+ *
+ * Creates a VAO, a static VBO for the shared particle shape vertices, and a
+ * dynamic VBO for per-instance particle data. Configures vertex attribute
+ * pointers for position (location 0), instance position (location 1), and
+ * instance class (location 2). Stores the resulting VAO and instance VBO
+ * handles in shader_data.
+ *
+ * @param shader_data  Pointer to the shader state; vao and vbo fields are set on return.
+ * @param particles    Pointer to the particle array used to populate the instance VBO.
+ *
+ * @note This is a static internal helper and should only be called from init_graphics().
+ */
 static void init_vertices(shader_t *shader_data, particle_t *particles) {
     uint32_t vertex_VBO;
     uint32_t instance_VBO;
@@ -122,6 +180,18 @@ static void init_vertices(shader_t *shader_data, particle_t *particles) {
     shader_data->vbo = instance_VBO;
 }
 
+/**
+ * has_extension
+ *
+ * @brief Checks whether a filename ends with the given extension.
+ *
+ * @param filename   The filename or path to check.
+ * @param extension  The expected extension, including the dot (e.g. ".vert").
+ * @return           1 if the filename ends with the extension, 0 otherwise.
+ *
+ * @note This is a static internal helper used by init_graphics() to dispatch
+ *       shader files to the correct compile call by file extension.
+ */
 static uint8_t has_extension(char const *filename, char const *extension) {
     char const *dot = strrchr(filename, '.');
     if (dot == NULL)
@@ -129,6 +199,26 @@ static uint8_t has_extension(char const *filename, char const *extension) {
     return strcmp(dot, extension) == 0;
 }
 
+/**
+ * init_graphics
+ *
+ * @brief Compiles and links the graphics shader program from a variadic list of shader files.
+ *
+ * Accepts a variable number of shader source filenames, dispatching each to
+ * compile_shader() based on file extension (.vert or .frag). Links the compiled
+ * shaders into a graphics program and initializes vertex buffers via init_vertices().
+ *
+ * @param shader_data  Pointer to the shader state; graphics_program, vao, and vbo
+ *                     are set on success.
+ * @param particles    Pointer to the particle array passed to init_vertices().
+ * @param count        Number of shader filenames in the variadic argument list.
+ * @param ...          Shader source filenames (char *); must match count.
+ * @return             1 on success, 0 if any shader fails to compile or link.
+ *
+ * @warning Files with unrecognized extensions are skipped with a warning, which
+ *          may cause program linking to fail if a required shader stage is missing.
+ * @see init_compute(), init_vertices()
+ */
 uint8_t init_graphics(shader_t *shader_data, particle_t *particles, uint8_t count, ...) {
     va_list args;
     va_start(args, count);  // initialization of argument list
@@ -166,8 +256,6 @@ uint8_t init_graphics(shader_t *shader_data, particle_t *particles, uint8_t coun
     glDeleteShader(fragment_shader);
 
     if (!program_compilation_status(shader_data->graphics_program)) {
-        glDeleteShader(vertex_shader);
-        glDeleteShader(fragment_shader);
         glDeleteProgram(shader_data->graphics_program);
         return 0;
     }
@@ -176,6 +264,20 @@ uint8_t init_graphics(shader_t *shader_data, particle_t *particles, uint8_t coun
     return 1;
 }
 
+/**
+ * init_compute
+ *
+ * @brief Compiles and links a compute shader program from a single source file.
+ *
+ * Compiles the given .comp shader file and links it into a standalone compute
+ * program stored in shader_data->compute_program.
+ *
+ * @param shader_data  Pointer to the shader state; compute_program is set on success.
+ * @param filename     Path to the compute shader source file (.comp).
+ * @return             1 on success, 0 if the shader fails to compile or link.
+ *
+ * @see init_graphics()
+ */
 uint8_t init_compute(shader_t *shader_data, char const *filename) {
     shader_data->compute_program = glCreateProgram();
     uint32_t compute_shader = compile_shader(filename, GL_COMPUTE_SHADER);
@@ -183,7 +285,7 @@ uint8_t init_compute(shader_t *shader_data, char const *filename) {
     if (!compute_shader) {
         (void) printf("ERROR : SHADER PROGRAM - Failed to compile one or more shaders\n");
         glDeleteShader(compute_shader);
-        glDeleteProgram(compute_shader);
+        glDeleteProgram(shader_data->compute_program);
         return 0;
     }
 
@@ -193,7 +295,7 @@ uint8_t init_compute(shader_t *shader_data, char const *filename) {
 
     if (!program_compilation_status(shader_data->compute_program)) {
         glDeleteShader(compute_shader);
-        glDeleteProgram(compute_shader);
+        glDeleteProgram(shader_data->compute_program);
         return 0;
     }
 

@@ -6,14 +6,27 @@
 #include "SDL_video.h"
 #include "glad/glad.h"
 
-#include "../include/application.h"
-#include "../include/particle.h"
-#include "../include/shaders.h"
+#include "application.h"
+#include "particle.h"
+#include "shaders.h"
 
 #define DEFAULT_HEIGHT  800
 #define DEFAULT_WIDTH   1800
 
-// init_application : initializes the resources for the application
+/**
+ * init_application
+ *
+ * @brief Initializes the resources and subsystems required for the application.
+ *
+ * Sets up SDL, creates the window and OpenGL context, and loads OpenGL function
+ * pointers via GLAD. Does nothing if the application is already initialized.
+ *
+ * @param application  Pointer to the application state to initialize.
+ * @return             1 on success, 0 on failure.
+ *
+ * @note The application must be in the UNINITIALIZED state before calling this.
+ *       On failure, all partially initialized resources are cleaned up.
+ */
 int init_application(application_t *application) {
     if (application->state != UNINITIALIZED) return 0;
 
@@ -65,11 +78,29 @@ int init_application(application_t *application) {
     return 1;
 }
 
-// init_simulation : initializes the simulation particles and resources for the application
+/**
+ * init_simulation
+ *
+ * @brief Initializes the simulation particles and GPU resources.
+ *
+ * Allocates and uploads particles to the GPU via SSBOs, sets up graphics and
+ * compute shader programs, configures vertex attributes, and uploads the
+ * attraction matrix. The application window must already be initialized before
+ * calling this function.
+ *
+ * @param application  Pointer to the initialized application state.
+ * @return             1 on success, 0 if shader initialization fails.
+ *
+ * @note Relies on the global `attraction` matrix being populated before call.
+ * @see  init_application()
+ */
 int init_simulation(application_t *application) {
-    application->particles = init_particles(application, NUM_PARTICLES, MAX_NUM_CLASSES);
-
-    if (!init_graphics(&application->shader_data, application->particles,  2,  "./shaders/vertex.vert",  "./shaders/fragment.frag")) {
+    if (!init_particles(application, NUM_PARTICLES, 8)) {
+        printf("Simulation Initialization failed.");
+        return 0;
+    }
+    
+    if (!init_graphics(&application->shader_data, application->particles,  2,  "./shaders/particle.vert",  "./shaders/particle.frag")) {
         printf("ERROR: Failed to initialize graphics shaders\n");
         return 0;
     }
@@ -84,7 +115,7 @@ int init_simulation(application_t *application) {
     );
 
     // Compute Shader initialization
-    if (!init_compute(&application->shader_data, "./shaders/compute.comp")) {
+    if (!init_compute(&application->shader_data, "./shaders/particle.comp")) {
         printf("ERROR: Failed to initialize compute shaders\n");
         return 0;
     }
@@ -113,13 +144,25 @@ int init_simulation(application_t *application) {
     uint32_t attraction_ssbo;
     glGenBuffers(1, &attraction_ssbo);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, attraction_ssbo);
-    glBufferData(GL_SHADER_STORAGE_BUFFER, attraction.length * sizeof(float), attraction.matrix, GL_STATIC_DRAW);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, application->attraction.length * sizeof(float), application->attraction.matrix, GL_STATIC_DRAW);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, attraction_ssbo); // binding = 1
 
     return 1;
 }
 
-// destroy_application : destroys the allocated resources for the application
+/**
+ * destroy_application
+ *
+ * @brief Destroys all resources allocated for the application and shuts down SDL.
+ *
+ * Destroys the OpenGL context, window, and particle data, then calls SDL_Quit.
+ * Does nothing if the application is not in a RUNNING or PAUSED state.
+ *
+ * @param application  Pointer to the application state to destroy.
+ * @return             1 on success, 0 if the application was not in a valid state.
+ *
+ * @see init_application()
+ */
 int destroy_application(application_t *application) {
     if (application->state != RUNNING && application->state != PAUSED) return 0;
 
@@ -132,7 +175,7 @@ int destroy_application(application_t *application) {
         application->window = NULL;
     }
 
-    destroy_particles(application->particles);
+    destroy_particles(application);
     
     // Quit subsystems
     SDL_Quit();
@@ -141,7 +184,21 @@ int destroy_application(application_t *application) {
 }
 
 
-// handle_events : the event loop - checks for events and returns them
+/**
+ * handle_events
+ *
+ * @brief Polls and dispatches SDL events for the current frame.
+ *
+ * Handles window quit requests, window resize events (updating the OpenGL
+ * viewport and projection matrix), and mouse events. Unrecognized events
+ * are silently ignored.
+ *
+ * @param application  Pointer to the running application state.
+ *
+ * @note This is a static internal function and should only be called from mainloop().
+ * @warning On quit, sets application state to UNINITIALIZED, which will cause
+ *          mainloop() to exit on the next iteration.
+ */
 static void handle_events(application_t *application) {
     SDL_Event e;
     while (SDL_PollEvent(&e)) {
@@ -171,7 +228,22 @@ static void handle_events(application_t *application) {
     }
 }
 
-// mainloop : the application main loop
+/**
+ * mainloop
+ *
+ * @brief Runs the main application loop until the application exits.
+ *
+ * Each frame: polls events, clears the screen, dispatches the compute shader
+ * for physics, then renders all particles via instanced drawing. Continues
+ * until the application state is no longer RUNNING or PAUSED.
+ *
+ * @param application  Pointer to the running application state.
+ * @return             1 when the loop exits cleanly.
+ *
+ * @note Expects both the graphics and compute shader programs to be initialized
+ *       via init_simulation() before calling.
+ * @see  handle_events(), init_simulation()
+ */
 int mainloop(application_t *application) {
     
     glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
@@ -185,23 +257,23 @@ int mainloop(application_t *application) {
         
         // Physics
         glUseProgram(application->shader_data.compute_program);
-        glUniform1ui(glGetUniformLocation(application->shader_data.compute_program, "nclass"),      MAX_NUM_CLASSES);
+        glUniform1ui(glGetUniformLocation(application->shader_data.compute_program, "nclass"),      application->attraction.nclass);
         glUniform1ui(glGetUniformLocation(application->shader_data.compute_program, "count"),       NUM_PARTICLES);
         glUniform1f (glGetUniformLocation(application->shader_data.compute_program, "deltaTime"),   DELTATIME);
-        glUniform2f (glGetUniformLocation(application->shader_data.compute_program, "screenSize"), (float)application->width, (float)application->height);
+        glUniform1f (glGetUniformLocation(application->shader_data.compute_program, "friction"),    FRICTIONHALFLIFE);
+        glUniform2f (glGetUniformLocation(application->shader_data.compute_program, "screenSize"),  (float)application->width, (float)application->height);
         glDispatchCompute((NUM_PARTICLES + 255) / 256, 1, 1);
         glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT);
         
         glUseProgram(application->shader_data.graphics_program);
         glBindVertexArray(application->shader_data.vao);
-        glUniform4fv(glGetUniformLocation(application->shader_data.graphics_program, "palette"), 8, &rgba[0][0]);
+        glUniform4fv(glGetUniformLocation(application->shader_data.graphics_program, "palette"), application->attraction.nclass, &rgba[0][0]);
 
         glDrawArraysInstanced(GL_TRIANGLE_FAN, 0, NUM_COORDINATES, NUM_PARTICLES);
-
-        // update_particles(application, application->particles);
 
         SDL_GL_SwapWindow(application->window);
     }
 
     return 1;
 }
+

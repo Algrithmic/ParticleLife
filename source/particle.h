@@ -10,7 +10,7 @@ typedef struct v2D {
 
 typedef struct application application_t;
 
-#define NUM_PARTICLES   5000
+#define NUM_PARTICLES   30000
 #define MAX_NUM_CLASSES 8
 
 // index of each color class within color[]
@@ -47,22 +47,15 @@ typedef struct attraction {
     unsigned int length;
     float *matrix;
 } attraction_t;
-extern attraction_t attraction;
 
 #define MAXDISTANCE         225.0f
-#define FRICTIONHALFLIFE    2.0f
-#define DELTATIME           0.050f
+#define FRICTIONHALFLIFE    0.25f
+#define DELTATIME           0.075f
 
 // init_particles : creates a pointer to an array of n particles and initializes the attraction matrix
-particle_t *init_particles(application_t *application, unsigned int n, unsigned int num_classes);
+int init_particles(application_t *application, unsigned int n, unsigned int num_classes);
 
 // destroy_particles : destroys (frees) the particles array
-void destroy_particles(particle_t *particles);
-
-// update_particles : updates the particles array with new positions based on attraction factor
-void update_particles(application_t *application, particle_t *particles);
-
-// draw_particle : draws a particle to the screen
-void draw_particle(application_t *application, particle_t particle);
+int destroy_particles(application_t *application);
 
 #endif

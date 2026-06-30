@@ -2,7 +2,7 @@
 
 #include "SDL.h"
 
-#include "../include/application.h"
+#include "application.h"
 
 int main(void) {
     // Initialization
