@@ -268,6 +268,7 @@ int mainloop(application_t *application) {
         glUseProgram(application->shader_data.graphics_program);
         glBindVertexArray(application->shader_data.vao);
         glUniform4fv(glGetUniformLocation(application->shader_data.graphics_program, "palette"), application->attraction.nclass, &rgba[0][0]);
+        glUniform1f(glGetUniformLocation(application->shader_data.graphics_program, "radius"), RADIUS);
 
         glDrawArraysInstanced(GL_TRIANGLE_FAN, 0, NUM_COORDINATES, NUM_PARTICLES);
 

@@ -6,7 +6,6 @@ out vec4 FragColor;
 
 uniform vec4 palette[8];
 
-void main()
-{
+void main() {
     FragColor = palette[classData];
 }

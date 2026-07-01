@@ -5,10 +5,11 @@ layout (location = 2) in uint particleClass;
 
 flat out uint classData;
 
+uniform float radius;
 uniform mat4 projection;
 
 void main() {
-    vec2 worldPosition = vertexData + positionOffset;
+    vec2 worldPosition = (radius * vertexData) + positionOffset;
     gl_Position = projection * vec4(worldPosition, 0.0, 1.0); 
     classData = particleClass;
 }
