@@ -6,7 +6,7 @@ BUILD_DIR := ./build
 
 # Compilation Variables
 CC := gcc
-CFLAGS := -Wall -Wextra -Ivendor/SDL3/include -Ivendor/GLAD/include
+CFLAGS := -Wall -Wextra -Ivendor/SDL3/include -Ivendor/GLAD/include -Ivendor/Nuklear/include
 LDFLAGS := -lm -lcglm -lSDL3 -Lvendor/SDL3/libraries
 RPATH := -Wl,-rpath,'$$ORIGIN/../vendor/SDL3/libraries'
 
@@ -18,10 +18,14 @@ OBJECTS := $(patsubst $(SOURCE_DIR)/%.c, $(BUILD_DIR)/%.o, $(SOURCES))
 GLAD_SRC := $(VENDOR_DIR)/GLAD/src/glad.c
 GLAD_OBJ := $(BUILD_DIR)/glad.o
 
+# Documentation variables
+DOXYGEN := doxygen
+DOCS_DIR := ./docs
+
 # Cleanup variables
 RM := rm -rf
 
-.PHONY: all clean rebuild
+.PHONY: all clean rebuild docs clean-docs
 
 all: $(BUILD_DIR)/$(PROGNAME)
 
@@ -48,3 +52,13 @@ clean:
 # Clean up .o files and exe, then build
 rebuild: clean
 	$(MAKE) all
+
+# Generate HTML documentation from Doxygen comments -> docs/html/index.html
+docs:
+	$(DOXYGEN) Doxyfile
+	mkdir -p $(DOCS_DIR)/html/assets
+	cp -r assets/. $(DOCS_DIR)/html/assets/
+
+# Remove generated documentation
+clean-docs:
+	$(RM) $(DOCS_DIR)

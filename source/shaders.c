@@ -1,3 +1,11 @@
+/**
+ * @file shaders.c
+ * @brief GLSL shader loading, compilation, linking, and vertex buffer setup.
+ *
+ * Provides helpers to read shader sources from disk, compile and link graphics
+ * and compute programs, report compile/link errors, and configure the VAO/VBOs
+ * used for instanced particle rendering.
+ */
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>

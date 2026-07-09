@@ -1,3 +1,11 @@
+/**
+ * @file particle.c
+ * @brief Particle and attraction-matrix allocation, initialization, and teardown.
+ *
+ * Defines the color palette shared with the renderer and the CPU-side setup of
+ * the particle array and the inter-class attraction matrix that drives the
+ * simulation.
+ */
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -98,9 +106,10 @@ int init_particles(application_t *application, unsigned int n, unsigned int num_
 /**
  * destroy_particles
  *
- * @brief Frees the memory allocated for the particle array.
+ * @brief Frees the memory allocated for the particle array and attraction matrix.
  *
- * @param particles  Pointer to the particle array to free.
+ * @param application  Pointer to the application state holding the particle
+ *                     array and attraction matrix to free.
  * @returns 1 on success and 0 on failure
  *
  * @see init_particles()

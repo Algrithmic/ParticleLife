@@ -1,8 +1,16 @@
+/**
+ * @file particle.h
+ * @brief Particle, class, and attraction-matrix types plus simulation constants.
+ *
+ * Defines the particle representation shared between CPU and GPU, the color
+ * class enum, the attraction matrix type, and the tunable simulation constants.
+ */
 #ifndef PARTICLE_H
 #define PARTICLE_H
 
 #include "SDL_pixels.h"
 
+/// Two-dimensional float vector (position or velocity).
 typedef struct v2D {
     float x;
     float y;
@@ -10,10 +18,10 @@ typedef struct v2D {
 
 typedef struct application application_t;
 
-#define NUM_PARTICLES   35000
+#define NUM_PARTICLES   1000
 #define MAX_NUM_CLASSES 8
 
-// index of each color class within color[]
+/// Particle class; also the row index of its color within rgba[].
 typedef enum classifier {
     RED,
     BLUE,
@@ -25,7 +33,6 @@ typedef enum classifier {
     WHITE,
 } class_t;
 
-#define RGBA_WHITE  255, 255, 255, 255
 #define RGBA_BLACK  0.0f, 0.0f, 0.0f, 1.0f
 
 #define NUM_CHANNELS    4
@@ -40,16 +47,17 @@ typedef struct particle {
 } particle_t;
 
 
+/// Inter-class attraction matrix (row-major, nclass x nclass).
 typedef struct attraction {
-    unsigned int nclass;
-    unsigned int length;
-    float *matrix;
+    unsigned int nclass;    ///< Number of particle classes.
+    unsigned int length;    ///< Total entries in matrix (nclass * nclass).
+    float *matrix;          ///< Attraction weights in [-1, 1], class i toward class j.
 } attraction_t;
 
-#define RADIUS              1.0f
+#define RADIUS              3.0f
 #define MAXDISTANCE         225.0f
-#define FRICTIONHALFLIFE    0.20f
-#define DELTATIME           0.075f
+#define FRICTIONHALFLIFE    2.0f
+#define DELTATIME           0.1f
 
 // init_particles : creates a pointer to an array of n particles and initializes the attraction matrix
 int init_particles(application_t *application, unsigned int n, unsigned int num_classes);

@@ -1,14 +1,25 @@
+/**
+ * @file application.c
+ * @brief Application lifecycle, event handling, and the main render loop.
+ *
+ * Owns SDL/OpenGL setup and teardown, GPU resource creation for the simulation,
+ * and the per-frame loop that drives input, the compute-shader physics step,
+ * particle rendering, and the Nuklear GUI overlay.
+ */
 #include <stdio.h>
 #include <math.h>
 #include <cglm/cglm.h>
 
 #include "SDL.h"
 #include "SDL_video.h"
+
 #include "glad/glad.h"
 
 #include "application.h"
 #include "particle.h"
 #include "shaders.h"
+#include "gui.h"
+
 
 #define DEFAULT_HEIGHT  800
 #define DEFAULT_WIDTH   1800
@@ -60,8 +71,8 @@ int init_application(application_t *application) {
     }
 
     // Initialize the renderer
-    application->context = SDL_GL_CreateContext(application->window);
-    if (application->context == NULL) {
+    application->gl_context = SDL_GL_CreateContext(application->window);
+    if (application->gl_context == NULL) {
         printf("Renderer Creation failed. ERROR: %s\n", SDL_GetError());
         SDL_DestroyWindow(application->window);
         SDL_Quit();
@@ -72,7 +83,7 @@ int init_application(application_t *application) {
     if (!gladLoadGLLoader((GLADloadproc) SDL_GL_GetProcAddress)) {
         printf("Failed to initialize GLAD. ERROR: %s\n", SDL_GetError());
     }
-
+    
     application->state = RUNNING;
 
     return 1;
@@ -161,13 +172,17 @@ int init_simulation(application_t *application) {
  * @param application  Pointer to the application state to destroy.
  * @return             1 on success, 0 if the application was not in a valid state.
  *
+ * @note Tears down the Nuklear GUI first, while the OpenGL context is still
+ *       current, before destroying the context and window.
  * @see init_application()
  */
 int destroy_application(application_t *application) {
     if (application->state != RUNNING && application->state != PAUSED) return 0;
 
-    if (application->context) 
-        SDL_GL_DestroyContext(application->context);
+    destroy_gui();
+
+    if (application->gl_context) 
+        SDL_GL_DestroyContext(application->gl_context);
 
     // Destroy Window
     if (application->window) {
@@ -190,8 +205,9 @@ int destroy_application(application_t *application) {
  * @brief Polls and dispatches SDL events for the current frame.
  *
  * Handles window quit requests, window resize events (updating the OpenGL
- * viewport and projection matrix), and mouse events. Unrecognized events
- * are silently ignored.
+ * viewport and projection matrix), and mouse events. Every event is also
+ * forwarded to Nuklear, wrapped in nk_input_begin()/nk_input_end(), so the GUI
+ * can capture input. Unrecognized events are silently ignored.
  *
  * @param application  Pointer to the running application state.
  *
@@ -201,6 +217,7 @@ int destroy_application(application_t *application) {
  */
 static void handle_events(application_t *application) {
     SDL_Event e;
+    nk_input_begin(application->gui_context);
     while (SDL_PollEvent(&e)) {
         switch (e.type) {
             case SDL_EVENT_QUIT: {
@@ -225,7 +242,57 @@ static void handle_events(application_t *application) {
                 break; 
             default: break;
         }
+
+        nk_sdl_handle_event(&e);
     }
+    nk_input_end(application->gui_context);
+}
+
+/**
+ * update_physics
+ *
+ * @brief Runs one physics step for all particles on the GPU.
+ *
+ * Binds the compute program, uploads the simulation uniforms, dispatches one
+ * compute workgroup per 256 particles, and issues a memory barrier so the
+ * updated particle data is visible to the subsequent draw.
+ *
+ * @param application  Pointer to the running application state.
+ *
+ * @note This is a static internal function and should only be called from mainloop().
+ * @see  update_graphics()
+ */
+static void update_physics(application_t *application) {
+    glUseProgram(application->shader_data.compute_program);
+    glUniform1ui(glGetUniformLocation(application->shader_data.compute_program, "nclass"),      application->attraction.nclass);
+    glUniform1ui(glGetUniformLocation(application->shader_data.compute_program, "count"),       NUM_PARTICLES);
+    glUniform1f (glGetUniformLocation(application->shader_data.compute_program, "deltaTime"),   DELTATIME);
+    glUniform1f (glGetUniformLocation(application->shader_data.compute_program, "friction"),    FRICTIONHALFLIFE);
+    glUniform2f (glGetUniformLocation(application->shader_data.compute_program, "screenSize"),  (float)application->width, (float)application->height);
+    glDispatchCompute((NUM_PARTICLES + 255) / 256, 1, 1);
+    glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT);
+}
+
+/**
+ * update_graphics
+ *
+ * @brief Renders all particles for the current frame via instanced drawing.
+ *
+ * Binds the graphics program and VAO, uploads the color palette and radius
+ * uniforms, and draws every particle in a single instanced draw call.
+ *
+ * @param application  Pointer to the running application state.
+ *
+ * @note This is a static internal function and should only be called from mainloop().
+ * @see  update_physics()
+ */
+static void update_graphics(application_t *application) {
+    glUseProgram(application->shader_data.graphics_program);
+    glBindVertexArray(application->shader_data.vao);
+    glUniform4fv(glGetUniformLocation(application->shader_data.graphics_program, "palette"), application->attraction.nclass, &rgba[0][0]);
+    glUniform1f(glGetUniformLocation(application->shader_data.graphics_program, "radius"), RADIUS);
+
+    glDrawArraysInstanced(GL_TRIANGLE_FAN, 0, NUM_COORDINATES, NUM_PARTICLES);
 }
 
 /**
@@ -233,44 +300,34 @@ static void handle_events(application_t *application) {
  *
  * @brief Runs the main application loop until the application exits.
  *
- * Each frame: polls events, clears the screen, dispatches the compute shader
- * for physics, then renders all particles via instanced drawing. Continues
- * until the application state is no longer RUNNING or PAUSED.
+ * Each frame: polls events (also feeding the GUI), builds the GUI layout, clears
+ * the screen, dispatches the compute shader for physics, renders all particles
+ * via instanced drawing, then draws the GUI overlay on top and presents the
+ * frame. Continues until the application state is no longer RUNNING or PAUSED.
  *
  * @param application  Pointer to the running application state.
  * @return             1 when the loop exits cleanly.
  *
- * @note Expects both the graphics and compute shader programs to be initialized
- *       via init_simulation() before calling.
- * @see  handle_events(), init_simulation()
+ * @note Expects the graphics and compute shader programs to be initialized via
+ *       init_simulation(), and the GUI via init_gui(), before calling.
+ * @note nk_sdl_render() both draws the GUI and closes out the Nuklear frame; it
+ *       must run every iteration or the next frame's nk_begin() will assert.
+ * @see  handle_events(), update_physics(), update_graphics(), init_simulation()
  */
 int mainloop(application_t *application) {
-    
-    glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-    
     while (application->state == RUNNING || application->state == PAUSED) {
         handle_events(application);
-        
+
+        update_gui(application);
+
         // Set draw color to black and clear
         glClearColor(RGBA_BLACK);  // R, G, B, A
         glClear(GL_COLOR_BUFFER_BIT);
         
-        // Physics
-        glUseProgram(application->shader_data.compute_program);
-        glUniform1ui(glGetUniformLocation(application->shader_data.compute_program, "nclass"),      application->attraction.nclass);
-        glUniform1ui(glGetUniformLocation(application->shader_data.compute_program, "count"),       NUM_PARTICLES);
-        glUniform1f (glGetUniformLocation(application->shader_data.compute_program, "deltaTime"),   DELTATIME);
-        glUniform1f (glGetUniformLocation(application->shader_data.compute_program, "friction"),    FRICTIONHALFLIFE);
-        glUniform2f (glGetUniformLocation(application->shader_data.compute_program, "screenSize"),  (float)application->width, (float)application->height);
-        glDispatchCompute((NUM_PARTICLES + 255) / 256, 1, 1);
-        glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT);
-        
-        glUseProgram(application->shader_data.graphics_program);
-        glBindVertexArray(application->shader_data.vao);
-        glUniform4fv(glGetUniformLocation(application->shader_data.graphics_program, "palette"), application->attraction.nclass, &rgba[0][0]);
-        glUniform1f(glGetUniformLocation(application->shader_data.graphics_program, "radius"), RADIUS);
+        update_physics(application);
+        update_graphics(application);
 
-        glDrawArraysInstanced(GL_TRIANGLE_FAN, 0, NUM_COORDINATES, NUM_PARTICLES);
+        nk_sdl_render(NK_ANTI_ALIASING_ON, MAX_VERTEX_MEMORY, MAX_ELEMENT_MEMORY);
 
         SDL_GL_SwapWindow(application->window);
     }

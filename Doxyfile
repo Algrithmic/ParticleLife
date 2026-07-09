@@ -1,0 +1,64 @@
+# Doxyfile for Particle Life
+#
+# Minimal, hand-tuned configuration. Every option not listed here falls back to
+# Doxygen's built-in default. Regenerate a fully-commented template any time with
+# `doxygen -g Doxyfile.full` to see all available options.
+#
+# Usage:  doxygen            (reads this file, writes docs/html/index.html)
+#     or:  make docs
+
+#---------------------------------------------------------------------------
+# Project
+#---------------------------------------------------------------------------
+PROJECT_NAME           = "Particle Life"
+PROJECT_BRIEF          = "A GPU-accelerated particle life simulation (SDL3 + OpenGL 4.3)"
+OUTPUT_DIRECTORY       = docs
+
+#---------------------------------------------------------------------------
+# Input
+#---------------------------------------------------------------------------
+INPUT                  = source README.md
+USE_MDFILE_AS_MAINPAGE = README.md
+FILE_PATTERNS          = *.c *.h
+RECURSIVE              = YES
+
+# The vendored libraries (GLAD, SDL3, Nuklear) are not our code — skip them.
+# They are already outside INPUT, but this makes the intent explicit.
+EXCLUDE                = vendor
+
+#---------------------------------------------------------------------------
+# Build / extraction
+#---------------------------------------------------------------------------
+# C project, not C++ — tunes the output naming and layout.
+OPTIMIZE_OUTPUT_FOR_C  = YES
+
+# Document everything, including items with no comment yet, so nothing silently
+# disappears from the docs.
+EXTRACT_ALL            = YES
+
+# Include our `static` helpers (update_physics, compile_shader, ...). Without
+# this they would be omitted, since static symbols are file-local by default.
+EXTRACT_STATIC         = YES
+
+# Treat the first sentence of a /** */ block as the brief description even
+# without an explicit @brief tag.
+JAVADOC_AUTOBRIEF      = YES
+
+TAB_SIZE               = 4
+
+#---------------------------------------------------------------------------
+# Warnings — help keep the docs honest as the code changes
+#---------------------------------------------------------------------------
+QUIET                  = YES
+WARNINGS               = YES
+WARN_IF_UNDOCUMENTED   = YES
+WARN_IF_DOC_ERROR      = YES
+
+#---------------------------------------------------------------------------
+# Output formats
+#---------------------------------------------------------------------------
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+
+# Let readers click through to the annotated source of each documented symbol.
+SOURCE_BROWSER         = YES
