@@ -53,7 +53,6 @@ int init_application(application_t *application) {
 
     application->height = DEFAULT_HEIGHT;
     application->width = DEFAULT_WIDTH;
-    application->delta_time = 0.0F;
 
     // initialize the window
     application->window = SDL_CreateWindow("Particle Life", DEFAULT_WIDTH, DEFAULT_HEIGHT, SDL_WINDOW_OPENGL);
@@ -89,6 +88,12 @@ int init_application(application_t *application) {
     return 1;
 }
 
+#define ATTRACTION_RADIUS   225.0f
+#define FRICTION_HALFLIFE   2.0f
+#define DELTATIME           0.1f
+#define STARTING_COUNT      1000
+#define STARTING_CLASSES    4
+
 /**
  * init_simulation
  *
@@ -106,12 +111,20 @@ int init_application(application_t *application) {
  * @see  init_application()
  */
 int init_simulation(application_t *application) {
-    if (!init_particles(application, NUM_PARTICLES, 8)) {
+    if (!init_particles(application, STARTING_COUNT, STARTING_CLASSES)) {
         printf("Simulation Initialization failed.");
         return 0;
     }
     
-    if (!init_graphics(&application->shader_data, application->particles,  2,  "./shaders/particle.vert",  "./shaders/particle.frag")) {
+    application->tunables.particle_count = STARTING_COUNT;
+    application->tunables.nclass = STARTING_CLASSES;
+    application->tunables.attraction_radius = ATTRACTION_RADIUS;
+    application->tunables.friction_halflife = FRICTION_HALFLIFE;
+    application->tunables.delta_time = DELTATIME;
+    application->tunables.dirty = false;
+    application->tunables.shuffle = false;
+
+    if (!init_graphics(application,  2,  "./shaders/particle.vert",  "./shaders/particle.frag")) {
         printf("ERROR: Failed to initialize graphics shaders\n");
         return 0;
     }
@@ -131,32 +144,11 @@ int init_simulation(application_t *application) {
         return 0;
     }
 
-    // Particles SSBO
-    uint32_t particle_ssbo;
-    glGenBuffers(1, &particle_ssbo);
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, particle_ssbo);
-    glBufferData(GL_SHADER_STORAGE_BUFFER, NUM_PARTICLES * sizeof(particle_t), application->particles, GL_DYNAMIC_DRAW);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, particle_ssbo);   // binding = 0
-
-    glBindVertexArray(application->shader_data.vao);
-    glBindBuffer(GL_ARRAY_BUFFER, particle_ssbo);
-
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(particle_t), (void *) offsetof(particle_t, position));
-    glEnableVertexAttribArray(1);
-    glVertexAttribDivisor(1, 1);
-
-    glVertexAttribIPointer(2, 1, GL_UNSIGNED_INT, sizeof(particle_t), (void *) offsetof(particle_t, class));
-    glEnableVertexAttribArray(2);
-    glVertexAttribDivisor(2, 1);
-
-    glBindVertexArray(0);
-
-    // Attraction Matrix SSBO
-    uint32_t attraction_ssbo;
-    glGenBuffers(1, &attraction_ssbo);
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, attraction_ssbo);
-    glBufferData(GL_SHADER_STORAGE_BUFFER, application->attraction.length * sizeof(float), application->attraction.matrix, GL_STATIC_DRAW);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, attraction_ssbo); // binding = 1
+    // Shader Storage Buffer Objects
+    if (!init_buffers(application)) {
+        printf("ERROR: Failed to initialize shader storage buffer objects");
+        return 0;
+    }
 
     return 1;
 }
@@ -265,11 +257,12 @@ static void handle_events(application_t *application) {
 static void update_physics(application_t *application) {
     glUseProgram(application->shader_data.compute_program);
     glUniform1ui(glGetUniformLocation(application->shader_data.compute_program, "nclass"),      application->attraction.nclass);
-    glUniform1ui(glGetUniformLocation(application->shader_data.compute_program, "count"),       NUM_PARTICLES);
-    glUniform1f (glGetUniformLocation(application->shader_data.compute_program, "deltaTime"),   DELTATIME);
-    glUniform1f (glGetUniformLocation(application->shader_data.compute_program, "friction"),    FRICTIONHALFLIFE);
+    glUniform1ui(glGetUniformLocation(application->shader_data.compute_program, "count"),       application->tunables.particle_count);
+    glUniform1f (glGetUniformLocation(application->shader_data.compute_program, "deltaTime"),   application->tunables.delta_time);
+    glUniform1f (glGetUniformLocation(application->shader_data.compute_program, "friction"),    application->tunables.friction_halflife);
+    glUniform1f (glGetUniformLocation(application->shader_data.compute_program, "attractionRadius"), application->tunables.attraction_radius);
     glUniform2f (glGetUniformLocation(application->shader_data.compute_program, "screenSize"),  (float)application->width, (float)application->height);
-    glDispatchCompute((NUM_PARTICLES + 255) / 256, 1, 1);
+    glDispatchCompute((application->tunables.particle_count + 255) / 256, 1, 1);
     glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT);
 }
 
@@ -292,7 +285,7 @@ static void update_graphics(application_t *application) {
     glUniform4fv(glGetUniformLocation(application->shader_data.graphics_program, "palette"), application->attraction.nclass, &rgba[0][0]);
     glUniform1f(glGetUniformLocation(application->shader_data.graphics_program, "radius"), RADIUS);
 
-    glDrawArraysInstanced(GL_TRIANGLE_FAN, 0, NUM_COORDINATES, NUM_PARTICLES);
+    glDrawArraysInstanced(GL_TRIANGLE_FAN, 0, NUM_COORDINATES, application->tunables.particle_count);
 }
 
 /**
@@ -317,14 +310,20 @@ static void update_graphics(application_t *application) {
 int mainloop(application_t *application) {
     while (application->state == RUNNING || application->state == PAUSED) {
         handle_events(application);
-
         update_gui(application);
+        if (application->tunables.shuffle) {
+            shuffle_particles(application);
+            update_particle_buffer(application);
+            update_attraction_buffer(application);
+            application->tunables.shuffle = false;
+        }
 
         // Set draw color to black and clear
         glClearColor(RGBA_BLACK);  // R, G, B, A
         glClear(GL_COLOR_BUFFER_BIT);
         
-        update_physics(application);
+        if (application->state == RUNNING)
+            update_physics(application);
         update_graphics(application);
 
         nk_sdl_render(NK_ANTI_ALIASING_ON, MAX_VERTEX_MEMORY, MAX_ELEMENT_MEMORY);

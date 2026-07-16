@@ -22,6 +22,7 @@ uniform uint    nclass;
 uniform uint    count;
 uniform float   deltaTime;
 uniform float   friction;
+uniform float   attractionRadius;
 uniform vec2    screenSize;
 
 float forceFn(float r, float alpha) {
@@ -54,10 +55,10 @@ void main() {
         if (delta.y < -screenSize.y / 2.0) delta.y += screenSize.y;
 
         float dist = length(delta);
-        if (dist == 0.0 || dist > 225.0) continue;
+        if (dist == 0.0 || dist > attractionRadius) continue;
 
         float alpha = matrix[colorClass_i * nclass + particles[j].colorClass];
-        float f     = forceFn(dist / 225.0, alpha);
+        float f     = forceFn(dist / attractionRadius, alpha);
         acceleration += normalize(delta) * f;
     }
 

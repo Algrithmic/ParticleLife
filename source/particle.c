@@ -95,12 +95,27 @@ int init_particles(application_t *application, unsigned int n, unsigned int num_
         free(application->particles);
         return 0;
     }
+
     // Fill attraction matrix | matrix[i] belongs to [-1.0f, 1.0f]
     for (unsigned int i = 0; i < application->attraction.length; i++)
         application->attraction.matrix[i] = SDL_randf() * 2.0f - 1.0f;
     
     
     return 1;
+}
+
+void shuffle_particles(application_t *application) {
+    // Shuffle Particle Parameters
+    for (uint32_t i = 0; i < application->tunables.particle_count; i++) {
+        application->particles[i].position.x = SDL_rand(application->width);
+        application->particles[i].position.y = SDL_rand(application->height);
+        application->particles[i].velocity.x = 0.0f;
+        application->particles[i].velocity.y = 0.0f;
+    }
+
+    // Fill attraction matrix | matrix[i] belongs to [-1.0f, 1.0f]
+    for (unsigned int i = 0; i < application->attraction.length; i++)
+        application->attraction.matrix[i] = SDL_randf() * 2.0f - 1.0f;
 }
 
 /**

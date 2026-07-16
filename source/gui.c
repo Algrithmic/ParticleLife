@@ -10,6 +10,8 @@
 #define NK_IMPLEMENTATION
 #define NK_SDL_GL3_IMPLEMENTATION
 
+#include <stdio.h>
+
 #include "application.h"
 #include "gui.h"
 
@@ -63,6 +65,83 @@ int destroy_gui(void) {
     return 1;
 }
 
+
+#define DEFAULT_PANEL_WIDTH     300
+#define PANEL_CONTENT_RIGHT_PADDING 20
+#define DEFAULT_WIDGET_HEIGHT   35
+#define MAX_NUM_COUNT           8
+
+static void update_state_section(application_t *application) {
+    // Simulation State Section
+    nk_layout_row_dynamic(application->gui_context, DEFAULT_WIDGET_HEIGHT, 1);
+    nk_label(application->gui_context, "SIMULATION STATE", NK_TEXT_ALIGN_LEFT | NK_TEXT_ALIGN_MIDDLE);
+
+    static const float button_ratio[] = { 0.05f, 0.45f, 0.45f };
+    nk_layout_row(application->gui_context, NK_DYNAMIC, DEFAULT_WIDGET_HEIGHT, 3, button_ratio);
+    nk_spacer(application->gui_context);
+
+    if (application->state == RUNNING) {
+        if (nk_button_symbol_label(application->gui_context, NK_SYMBOL_RECT_SOLID, "  PAUSE", NK_TEXT_ALIGN_RIGHT)) {
+            application->state = PAUSED;
+        }
+    }
+    else if (application->state == PAUSED) {
+        if (nk_button_symbol_label(application->gui_context, NK_SYMBOL_TRIANGLE_RIGHT, "  PLAY", NK_TEXT_ALIGN_RIGHT)) {
+            application->state = RUNNING;
+        }
+    }
+
+    if (nk_button_label(application->gui_context, "Shuffle")) {
+        application->tunables.shuffle = true;
+    }
+}
+
+static void update_world_section(application_t *application) {
+    // Particle Settings Label
+    nk_layout_row_dynamic(application->gui_context, DEFAULT_WIDGET_HEIGHT, 1);
+    nk_label(application->gui_context, "PARTICLE SETTINGS", NK_TEXT_ALIGN_LEFT | NK_TEXT_ALIGN_BOTTOM);
+
+    // Particle Count Label
+    nk_layout_row_static(application->gui_context, 20, DEFAULT_PANEL_WIDTH / 2 - PANEL_CONTENT_RIGHT_PADDING, 2);
+    nk_label(application->gui_context, "Particle Count", NK_TEXT_ALIGN_LEFT | NK_TEXT_ALIGN_BOTTOM);
+
+    char particle_count[MAX_NUM_COUNT] = { '\0' };
+    nk_itoa(particle_count, application->tunables.particle_count);
+    nk_label(application->gui_context, particle_count, NK_TEXT_ALIGN_RIGHT | NK_TEXT_ALIGN_BOTTOM);
+    nk_layout_row_dynamic(application->gui_context, DEFAULT_WIDGET_HEIGHT, 1);
+    if (nk_slider_int(application->gui_context, 0, (int *) &application->tunables.particle_count, 50000, 1)) {
+        application->tunables.dirty = false; // Correct later [should be true]
+    }
+
+    // Particle Types Label
+    nk_layout_row_static(application->gui_context, 20, DEFAULT_PANEL_WIDTH / 2 - PANEL_CONTENT_RIGHT_PADDING, 2);
+    nk_label(application->gui_context, "Particle Types", NK_TEXT_ALIGN_LEFT | NK_TEXT_ALIGN_BOTTOM);
+
+    char class_count[MAX_NUM_COUNT] = { '\0' };
+    nk_itoa(class_count, application->tunables.nclass);
+    nk_label(application->gui_context, class_count, NK_TEXT_ALIGN_RIGHT | NK_TEXT_ALIGN_BOTTOM);
+    nk_layout_row_dynamic(application->gui_context, DEFAULT_WIDGET_HEIGHT, 1);
+    if (nk_slider_int(application->gui_context, 1, (int *) &application->tunables.nclass, 8, 1)) {
+        application->tunables.dirty = false; // Correct later [should be true]
+    }
+
+    // Particle Colors
+    // For each color type, display a circle with each corresponding color
+    // Below add a combobox with color presets
+}
+
+static void update_attraction_matrix_section(application_t *application) {
+    // Attraction Matrix Section
+    // for each color type, display a grid of all colors and their attraction factors
+}
+
+static void update_physics_section(application_t *application) {
+    // Physics Control Section
+    // Friction Half Life
+    // Interaction Radius
+    // Delta Time
+}
+
 /**
  * update_gui
  *
@@ -80,15 +159,14 @@ int destroy_gui(void) {
  * @note Widget interactions (e.g. button presses) are handled inline here.
  * @see  init_gui(), mainloop()
  */
-int update_gui(application_t *application) {
-    if (nk_begin(application->gui_context, "Test", nk_rect(50, 50, 230, 250), 
-        NK_WINDOW_BORDER | NK_WINDOW_TITLE | NK_WINDOW_MINIMIZABLE)
+void update_gui(application_t *application) {
+    if (nk_begin(application->gui_context, "Control Panel", nk_rect(0, 0, DEFAULT_PANEL_WIDTH, application->height), 
+        NK_WINDOW_BORDER | NK_WINDOW_TITLE | NK_WINDOW_MINIMIZABLE | NK_WINDOW_MOVABLE)
     ) {
-        nk_layout_row_static(application->gui_context, 30, 80, 1);
-        if (nk_button_label(application->gui_context, "button1"))
-            printf("Button is pressed\n");
+        update_state_section(application);
+        update_world_section(application);
+        update_attraction_matrix_section(application);
+        update_physics_section(application);
     }
     nk_end(application->gui_context);
-
-    return 1;
 }

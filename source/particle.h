@@ -18,7 +18,6 @@ typedef struct v2D {
 
 typedef struct application application_t;
 
-#define NUM_PARTICLES   1000
 #define MAX_NUM_CLASSES 8
 
 /// Particle class; also the row index of its color within rgba[].
@@ -40,27 +39,38 @@ typedef enum classifier {
 extern float rgba[MAX_NUM_CLASSES][NUM_CHANNELS];
 
 typedef struct particle {
-    vector2D_t position;        // position of the particle (x, y)
-    vector2D_t velocity;        // velocity of the particle (x, y)
-    class_t class;              // class (color) of the particle
-    uint32_t _padding;          // padding for CPU and GPU memory alignment
+    vector2D_t position;        ///< position of the particle (x, y)
+    vector2D_t velocity;        ///< velocity of the particle (x, y)
+    class_t class;              ///< class (color) of the particle
+    uint32_t _padding;          ///< padding for CPU and GPU memory alignment
 } particle_t;
 
 
 /// Inter-class attraction matrix (row-major, nclass x nclass).
 typedef struct attraction {
-    unsigned int nclass;    ///< Number of particle classes.
-    unsigned int length;    ///< Total entries in matrix (nclass * nclass).
-    float *matrix;          ///< Attraction weights in [-1, 1], class i toward class j.
+    uint32_t nclass;    ///< Number of particle classes.
+    uint32_t length;    ///< Total entries in matrix (nclass * nclass).
+    float *matrix;      ///< Attraction weights in [-1, 1], class i toward class j.
 } attraction_t;
 
-#define RADIUS              3.0f
-#define MAXDISTANCE         225.0f
-#define FRICTIONHALFLIFE    2.0f
-#define DELTATIME           0.1f
+typedef struct particle_parameters {
+    uint32_t particle_count;
+    uint32_t nclass;
+    float attraction_radius;
+    float friction_halflife;
+    float delta_time;
+    bool dirty;
+    bool shuffle;
+} partparams_t;
+
+#define RADIUS  3.0f
+
 
 // init_particles : creates a pointer to an array of n particles and initializes the attraction matrix
 int init_particles(application_t *application, unsigned int n, unsigned int num_classes);
+
+// shuffle_particles : Shuffles particle positions, reset velocities, and shuffles attraction matrix
+void shuffle_particles(application_t *application);
 
 // destroy_particles : destroys (frees) the particles array
 int destroy_particles(application_t *application);

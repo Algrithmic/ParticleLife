@@ -21,7 +21,7 @@ typedef struct SDL_GLContextState *SDL_GLContext;
 enum state {
     UNINITIALIZED = 0,  ///< Not yet initialized, or torn down / quitting.
     RUNNING,            ///< Actively simulating and rendering.
-    PAUSED              ///< Alive but simulation paused.
+    PAUSED,             ///< Alive but simulation paused
 };
 
 /// Central application state shared across subsystems.
@@ -31,9 +31,9 @@ typedef struct application {
     nk_context_t *gui_context;  ///< Nuklear GUI context.
     int32_t height;             ///< Current window height in pixels.
     int32_t width;              ///< Current window width in pixels.
-    int64_t delta_time;         ///< Frame time (reserved for timing).
     shader_t shader_data;       ///< Graphics/compute programs and vertex buffers.
     particle_t *particles;      ///< Heap-allocated array of NUM_PARTICLES particles.
+    partparams_t tunables;      ///< Tunable particle parameters
     attraction_t attraction;    ///< Inter-class attraction matrix.
     enum state state;           ///< Current lifecycle state.
 } application_t;

@@ -26,6 +26,7 @@
 
 typedef struct application application_t;
 
+
 // init_gui : creates the Nuklear context and bakes the default font
 int init_gui(application_t *application);
 
@@ -33,6 +34,6 @@ int init_gui(application_t *application);
 int destroy_gui(void);
 
 // update_gui : builds the GUI layout for the current frame
-int update_gui(application_t *application);
+void update_gui(application_t *application);
 
 #endif
