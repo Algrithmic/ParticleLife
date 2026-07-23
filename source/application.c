@@ -38,13 +38,13 @@
  * @note The application must be in the UNINITIALIZED state before calling this.
  *       On failure, all partially initialized resources are cleaned up.
  */
-int init_application(application_t *application) {
+bool init_application(application_t *application) {
     if (application->state != UNINITIALIZED) return 0;
 
     // Initialize SDL subsystems
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         printf("SDL Initialization failed. ERROR: %s\n", SDL_GetError());
-        return 0;
+        return false;
     }
 
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
@@ -59,14 +59,14 @@ int init_application(application_t *application) {
     if (application->window == NULL) {
         printf("Window Creation failed. ERROR: %s\n", SDL_GetError());
         SDL_Quit();
-        return 0;
+        return false;
     }
 
     if (!SDL_SetWindowResizable(application->window, true)) {
         printf("Unable to set window resizable. ERROR: %s\n", SDL_GetError());
         SDL_DestroyWindow(application->window);
         SDL_Quit();
-        return 0;
+        return false;
     }
 
     // Initialize the renderer
@@ -75,7 +75,7 @@ int init_application(application_t *application) {
         printf("Renderer Creation failed. ERROR: %s\n", SDL_GetError());
         SDL_DestroyWindow(application->window);
         SDL_Quit();
-        return 0;
+        return false;
     }
 
     // initialize GLAD in SDL for looking up OpenGL function pointers
@@ -85,12 +85,9 @@ int init_application(application_t *application) {
     
     application->state = RUNNING;
 
-    return 1;
+    return true;
 }
 
-#define ATTRACTION_RADIUS   225.0f
-#define FRICTION_HALFLIFE   2.0f
-#define DELTATIME           0.1f
 #define STARTING_COUNT      1000
 #define STARTING_CLASSES    4
 
@@ -110,23 +107,15 @@ int init_application(application_t *application) {
  * @note Relies on the global `attraction` matrix being populated before call.
  * @see  init_application()
  */
-int init_simulation(application_t *application) {
+bool init_simulation(application_t *application) {
     if (!init_particles(application, STARTING_COUNT, STARTING_CLASSES)) {
         printf("Simulation Initialization failed.");
-        return 0;
+        return false;
     }
-    
-    application->tunables.particle_count = STARTING_COUNT;
-    application->tunables.nclass = STARTING_CLASSES;
-    application->tunables.attraction_radius = ATTRACTION_RADIUS;
-    application->tunables.friction_halflife = FRICTION_HALFLIFE;
-    application->tunables.delta_time = DELTATIME;
-    application->tunables.dirty = false;
-    application->tunables.shuffle = false;
 
     if (!init_graphics(application,  2,  "./shaders/particle.vert",  "./shaders/particle.frag")) {
         printf("ERROR: Failed to initialize graphics shaders\n");
-        return 0;
+        return false;
     }
 
     // Set the initial projection — the window size is already known
@@ -141,16 +130,16 @@ int init_simulation(application_t *application) {
     // Compute Shader initialization
     if (!init_compute(&application->shader_data, "./shaders/particle.comp")) {
         printf("ERROR: Failed to initialize compute shaders\n");
-        return 0;
+        return false;
     }
 
     // Shader Storage Buffer Objects
     if (!init_buffers(application)) {
         printf("ERROR: Failed to initialize shader storage buffer objects");
-        return 0;
+        return false;
     }
 
-    return 1;
+    return true;
 }
 
 /**
@@ -168,7 +157,7 @@ int init_simulation(application_t *application) {
  *       current, before destroying the context and window.
  * @see init_application()
  */
-int destroy_application(application_t *application) {
+bool destroy_application(application_t *application) {
     if (application->state != RUNNING && application->state != PAUSED) return 0;
 
     destroy_gui();
@@ -187,7 +176,7 @@ int destroy_application(application_t *application) {
     // Quit subsystems
     SDL_Quit();
 
-    return 1;
+    return true;
 }
 
 
@@ -256,11 +245,12 @@ static void handle_events(application_t *application) {
  */
 static void update_physics(application_t *application) {
     glUseProgram(application->shader_data.compute_program);
-    glUniform1ui(glGetUniformLocation(application->shader_data.compute_program, "nclass"),      application->attraction.nclass);
+    glUniform1ui(glGetUniformLocation(application->shader_data.compute_program, "maxClass"),    MAX_NUM_CLASSES);
+    glUniform1ui(glGetUniformLocation(application->shader_data.compute_program, "nClass"),      application->tunables.nclass);
     glUniform1ui(glGetUniformLocation(application->shader_data.compute_program, "count"),       application->tunables.particle_count);
     glUniform1f (glGetUniformLocation(application->shader_data.compute_program, "deltaTime"),   application->tunables.delta_time);
-    glUniform1f (glGetUniformLocation(application->shader_data.compute_program, "friction"),    application->tunables.friction_halflife);
-    glUniform1f (glGetUniformLocation(application->shader_data.compute_program, "attractionRadius"), application->tunables.attraction_radius);
+    glUniform1f (glGetUniformLocation(application->shader_data.compute_program, "frictionFactor"),  application->tunables.friction_halflife);
+    glUniform1f (glGetUniformLocation(application->shader_data.compute_program, "attractionRadius"),application->tunables.attraction_radius);
     glUniform2f (glGetUniformLocation(application->shader_data.compute_program, "screenSize"),  (float)application->width, (float)application->height);
     glDispatchCompute((application->tunables.particle_count + 255) / 256, 1, 1);
     glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT);
@@ -282,8 +272,9 @@ static void update_physics(application_t *application) {
 static void update_graphics(application_t *application) {
     glUseProgram(application->shader_data.graphics_program);
     glBindVertexArray(application->shader_data.vao);
-    glUniform4fv(glGetUniformLocation(application->shader_data.graphics_program, "palette"), application->attraction.nclass, &rgba[0][0]);
+    glUniform4fv(glGetUniformLocation(application->shader_data.graphics_program, "palette"), MAX_NUM_CLASSES, &rgba[0][0]);
     glUniform1f(glGetUniformLocation(application->shader_data.graphics_program, "radius"), RADIUS);
+    glUniform1ui(glGetUniformLocation(application->shader_data.graphics_program, "nclass"), application->tunables.nclass);
 
     glDrawArraysInstanced(GL_TRIANGLE_FAN, 0, NUM_COORDINATES, application->tunables.particle_count);
 }
@@ -307,14 +298,14 @@ static void update_graphics(application_t *application) {
  *       must run every iteration or the next frame's nk_begin() will assert.
  * @see  handle_events(), update_physics(), update_graphics(), init_simulation()
  */
-int mainloop(application_t *application) {
+bool mainloop(application_t *application) {
     while (application->state == RUNNING || application->state == PAUSED) {
         handle_events(application);
         update_gui(application);
         if (application->tunables.shuffle) {
             shuffle_particles(application);
-            update_particle_buffer(application);
-            update_attraction_buffer(application);
+            update_particle_ssbo(application);
+            update_attraction_ssbo(application);
             application->tunables.shuffle = false;
         }
 
@@ -331,6 +322,6 @@ int mainloop(application_t *application) {
         SDL_GL_SwapWindow(application->window);
     }
 
-    return 1;
+    return true;
 }
 

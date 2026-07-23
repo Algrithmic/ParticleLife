@@ -33,17 +33,17 @@
  *       into nk_begin() asserts that a font is missing.
  * @see  destroy_gui(), update_gui()
  */
-int init_gui(application_t *application) {
+bool init_gui(application_t *application) {
     application->gui_context = nk_sdl_init(application->window);
     if (application->gui_context == NULL)
-        return 0;
+        return false;
 
     // Load default font
     struct nk_font_atlas *atlas;
     nk_sdl_font_stash_begin(&atlas);
     nk_sdl_font_stash_end();
 
-    return 1;
+    return true;
 }
 
 /**
@@ -59,10 +59,10 @@ int init_gui(application_t *application) {
  *
  * @see init_gui()
  */
-int destroy_gui(void) {
+bool destroy_gui(void) {
     nk_sdl_shutdown();
 
-    return 1;
+    return true;
 }
 
 
@@ -110,7 +110,7 @@ static void update_world_section(application_t *application) {
     nk_label(application->gui_context, particle_count, NK_TEXT_ALIGN_RIGHT | NK_TEXT_ALIGN_BOTTOM);
     nk_layout_row_dynamic(application->gui_context, DEFAULT_WIDGET_HEIGHT, 1);
     if (nk_slider_int(application->gui_context, 0, (int *) &application->tunables.particle_count, 50000, 1)) {
-        application->tunables.dirty = false; // Correct later [should be true]
+        application->tunables.dirty_particles = false; // Correct later [should be true]
     }
 
     // Particle Types Label
@@ -122,7 +122,7 @@ static void update_world_section(application_t *application) {
     nk_label(application->gui_context, class_count, NK_TEXT_ALIGN_RIGHT | NK_TEXT_ALIGN_BOTTOM);
     nk_layout_row_dynamic(application->gui_context, DEFAULT_WIDGET_HEIGHT, 1);
     if (nk_slider_int(application->gui_context, 1, (int *) &application->tunables.nclass, 8, 1)) {
-        application->tunables.dirty = false; // Correct later [should be true]
+        // do nothing
     }
 
     // Particle Colors

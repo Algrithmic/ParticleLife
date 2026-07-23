@@ -4,8 +4,6 @@ layout (local_size_x = 256) in;
 struct Particle {
     vec2 position;
     vec2 velocity;
-    uint colorClass;
-    uint _pad; // padding to align CPU and GPU
 };
 
 // particles
@@ -13,15 +11,16 @@ layout (std430, binding = 0) buffer ParticleBuffer {
     Particle particles[];
 };
 
-// attraction matrix: attraction[a * nclass + b]
+// attraction matrix: attraction[a * nClass + b]
 layout (std430, binding = 1) buffer AttractionBuffer {
     float matrix[];
 };
 
-uniform uint    nclass;
+uniform uint    maxClass;
+uniform uint    nClass;
 uniform uint    count;
 uniform float   deltaTime;
-uniform float   friction;
+uniform float   frictionFactor;
 uniform float   attractionRadius;
 uniform vec2    screenSize;
 
@@ -38,14 +37,15 @@ void main() {
     uint i = gl_GlobalInvocationID.x;
     if (i >= count) return;  // guard: invocations past the last particle do nothing
 
+    uint colorClass_i = i % nClass;
     vec2 position_i = particles[i].position;
-    uint colorClass_i = particles[i].colorClass;
 
     vec2 acceleration = vec2(0.0);
 
     for (uint j = 0; j < count; j++) {
         if (i == j) continue;
 
+        uint colorClass_j = j % nClass;
         vec2 delta = particles[j].position - position_i;
 
         // wrap delta across screen edges
@@ -57,12 +57,12 @@ void main() {
         float dist = length(delta);
         if (dist == 0.0 || dist > attractionRadius) continue;
 
-        float alpha = matrix[colorClass_i * nclass + particles[j].colorClass];
+        float alpha = matrix[colorClass_i * maxClass + colorClass_j];
         float f     = forceFn(dist / attractionRadius, alpha);
         acceleration += normalize(delta) * f;
     }
 
-    float friction = pow(0.5, deltaTime / friction);  // FRICTIONHALFLIFE
+    float friction = pow(0.5, deltaTime / frictionFactor);  // FRICTIONHALFLIFE
 
     particles[i].velocity = particles[i].velocity * friction + acceleration * deltaTime;
 

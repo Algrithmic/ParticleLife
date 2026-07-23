@@ -39,11 +39,10 @@ float rgba[MAX_NUM_CLASSES][NUM_CHANNELS] = {
  *
  * @note This is a static internal helper and should only be called from init_particles().
  */
-static particle_t new_particle(vector2D_t position, vector2D_t velocity, class_t class) {
+static particle_t new_particle(vector2D_t position, vector2D_t velocity) {
     return (particle_t) {
         .position = position,
-        .velocity = velocity,
-        .class = class
+        .velocity = velocity
     };
 }
 
@@ -63,45 +62,49 @@ static particle_t new_particle(vector2D_t position, vector2D_t velocity, class_t
  * 
  * @see  destroy_particles()
  */
-int init_particles(application_t *application, unsigned int n, unsigned int num_classes) {
+bool init_particles(application_t *application, uint32_t n, uint8_t num_classes) {
     if (num_classes > MAX_NUM_CLASSES) {
         printf("particle.c : number of classes not supported\n");
-        return 0;
+        return false;
     }
 
-    // initialize particles array
-    application->particles = (particle_t *) malloc(n * sizeof(particle_t));
+    // initialize particles array at max size
+    application->particles = (particle_t *) malloc(MAX_PARTICLES * sizeof(particle_t));
     if (application->particles == NULL) {
         printf("particle.c: Unable to allocate memory for particles");
-        return 0;
+        return false;
     }
     
     // Fill particle array
-    for (unsigned int i = 0; i < n; i++) {
+    for (uint32_t i = 0; i < n; i++) {
         application->particles[i] = new_particle(
             (vector2D_t) { .x = SDL_rand(application->width), .y = SDL_rand(application->height) },
-            (vector2D_t) { .x = 0.0f, .y = 0.0f },
-            i % num_classes
+            (vector2D_t) { .x = 0.0f, .y = 0.0f }
         );
     }
 
     // initializes the particle attraction matrix with random values [-1, 1]
-    application->attraction.nclass = num_classes;
-    application->attraction.length = num_classes * num_classes;
-    application->attraction.matrix = (float *) malloc((num_classes * num_classes) * sizeof(float));
+    application->attraction.length = MAX_NUM_CLASSES * MAX_NUM_CLASSES;
+    application->attraction.matrix = (float *) malloc((MAX_NUM_CLASSES * MAX_NUM_CLASSES) * sizeof(float));
     if (application->attraction.matrix == NULL) {
         printf("particle.c: Unable to allocate memory for attraction matrix");
-
         free(application->particles);
-        return 0;
+        return false;
     }
-
+    
     // Fill attraction matrix | matrix[i] belongs to [-1.0f, 1.0f]
-    for (unsigned int i = 0; i < application->attraction.length; i++)
+    for (uint32_t i = 0; i < application->attraction.length; i++)
         application->attraction.matrix[i] = SDL_randf() * 2.0f - 1.0f;
-    
-    
-    return 1;
+
+    application->tunables.particle_count = n;
+    application->tunables.nclass = num_classes;
+    application->tunables.attraction_radius = ATTRACTION_RADIUS;
+    application->tunables.friction_halflife = FRICTION_HALFLIFE;
+    application->tunables.delta_time = DELTATIME;
+    application->tunables.dirty_particles = false;
+    application->tunables.shuffle = false;
+
+    return true;
 }
 
 void shuffle_particles(application_t *application) {
@@ -114,7 +117,7 @@ void shuffle_particles(application_t *application) {
     }
 
     // Fill attraction matrix | matrix[i] belongs to [-1.0f, 1.0f]
-    for (unsigned int i = 0; i < application->attraction.length; i++)
+    for (uint32_t i = 0; i < application->attraction.length; i++)
         application->attraction.matrix[i] = SDL_randf() * 2.0f - 1.0f;
 }
 
@@ -129,13 +132,13 @@ void shuffle_particles(application_t *application) {
  *
  * @see init_particles()
  */
-int destroy_particles(application_t *application) {
+bool destroy_particles(application_t *application) {
     if (application->particles != NULL)
         free(application->particles);
 
     if (application->attraction.matrix != NULL) 
         free(application->attraction.matrix);
 
-    return 1;
+    return true;
 }
 

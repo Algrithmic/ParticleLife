@@ -41,14 +41,10 @@ extern float rgba[MAX_NUM_CLASSES][NUM_CHANNELS];
 typedef struct particle {
     vector2D_t position;        ///< position of the particle (x, y)
     vector2D_t velocity;        ///< velocity of the particle (x, y)
-    class_t class;              ///< class (color) of the particle
-    uint32_t _padding;          ///< padding for CPU and GPU memory alignment
 } particle_t;
-
 
 /// Inter-class attraction matrix (row-major, nclass x nclass).
 typedef struct attraction {
-    uint32_t nclass;    ///< Number of particle classes.
     uint32_t length;    ///< Total entries in matrix (nclass * nclass).
     float *matrix;      ///< Attraction weights in [-1, 1], class i toward class j.
 } attraction_t;
@@ -59,20 +55,23 @@ typedef struct particle_parameters {
     float attraction_radius;
     float friction_halflife;
     float delta_time;
-    bool dirty;
+    bool dirty_particles;
     bool shuffle;
 } partparams_t;
 
-#define RADIUS  3.0f
-
+#define MAX_PARTICLES       50000
+#define RADIUS              3.0f
+#define ATTRACTION_RADIUS   225.0f
+#define FRICTION_HALFLIFE   2.0f
+#define DELTATIME           0.1f
 
 // init_particles : creates a pointer to an array of n particles and initializes the attraction matrix
-int init_particles(application_t *application, unsigned int n, unsigned int num_classes);
+bool init_particles(application_t *application, uint32_t n, uint8_t num_classes);
 
 // shuffle_particles : Shuffles particle positions, reset velocities, and shuffles attraction matrix
 void shuffle_particles(application_t *application);
 
 // destroy_particles : destroys (frees) the particles array
-int destroy_particles(application_t *application);
+bool destroy_particles(application_t *application);
 
 #endif

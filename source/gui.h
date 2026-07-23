@@ -28,10 +28,10 @@ typedef struct application application_t;
 
 
 // init_gui : creates the Nuklear context and bakes the default font
-int init_gui(application_t *application);
+bool init_gui(application_t *application);
 
 // destroy_gui : tears down the Nuklear context and GPU resources
-int destroy_gui(void);
+bool destroy_gui(void);
 
 // update_gui : builds the GUI layout for the current frame
 void update_gui(application_t *application);

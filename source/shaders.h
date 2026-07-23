@@ -26,14 +26,14 @@ typedef struct shader_handles {
     uint32_t attraction_ssbo;   ///< Shared Buffer Object for attraction matrix.
 } shader_t;
 
-uint8_t init_graphics(application_t *application, uint8_t count, ...);
+bool init_graphics(application_t *application, uint8_t count, ...);
 
-uint8_t init_compute(shader_t *shader_data, char const *filename);
+bool init_compute(shader_t *shader_data, char const *filename);
 
-uint8_t init_buffers(application_t *application);
+bool init_buffers(application_t *application);
 
-void update_particle_buffer(application_t *application);
+void update_particle_ssbo(application_t *application);
 
-void update_attraction_buffer(application_t *application);
+void update_attraction_ssbo(application_t *application);
 
 #endif

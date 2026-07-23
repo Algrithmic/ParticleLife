@@ -46,8 +46,8 @@ static float vertices[TOTAL_POINTS] = {
  *
  * @note This is a static internal helper and should only be called from compile_shader().
  */
-static int shader_compilation_status(uint32_t const shader, char const *filename) {
-    int success;
+static int32_t shader_compilation_status(uint32_t const shader, char const *filename) {
+    int32_t success;
     char info_log[512];
     glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
     if (!success) {
@@ -125,8 +125,8 @@ static uint32_t compile_shader(char const *filename, uint32_t const type) {
  *
  * @note This is a static internal helper called by init_graphics() and init_compute().
  */
-static int program_compilation_status(uint32_t program) {
-    int success;
+static int32_t program_compilation_status(uint32_t program) {
+    int32_t success;
     char info_log[512];
     glGetProgramiv(program, GL_LINK_STATUS, &success);
     if (!success) {
@@ -178,12 +178,7 @@ static void init_vertices(application_t *application) {
     // Position attribute (location = 1)
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(particle_t), (void *) offsetof(particle_t, position));
     glEnableVertexAttribArray(1);
-    glVertexAttribDivisor(1, 1);
-
-    // Class attribute (location = 2)
-    glVertexAttribIPointer(2, 1, GL_UNSIGNED_INT, sizeof(particle_t), (void *) offsetof(particle_t, class));
-    glEnableVertexAttribArray(2);
-    glVertexAttribDivisor(2, 1);    
+    glVertexAttribDivisor(1, 1);  
 
     application->shader_data.vao = VAO;
     application->shader_data.vbo = instance_VBO;
@@ -201,7 +196,7 @@ static void init_vertices(application_t *application) {
  * @note This is a static internal helper used by init_graphics() to dispatch
  *       shader files to the correct compile call by file extension.
  */
-static uint8_t has_extension(char const *filename, char const *extension) {
+static bool has_extension(char const *filename, char const *extension) {
     char const *dot = strrchr(filename, '.');
     if (dot == NULL)
         return 0;
@@ -228,7 +223,7 @@ static uint8_t has_extension(char const *filename, char const *extension) {
  *          may cause program linking to fail if a required shader stage is missing.
  * @see init_compute(), init_vertices()
  */
-uint8_t init_graphics(application_t *application, uint8_t count, ...) {
+bool init_graphics(application_t *application, uint8_t count, ...) {
     va_list args;
     va_start(args, count);  // initialization of argument list
 
@@ -253,7 +248,7 @@ uint8_t init_graphics(application_t *application, uint8_t count, ...) {
         glDeleteShader(vertex_shader);
         glDeleteShader(fragment_shader);
         glDeleteProgram(application->shader_data.graphics_program);
-        return 0;
+        return false;
     }
 
     // Link Shaders
@@ -266,11 +261,11 @@ uint8_t init_graphics(application_t *application, uint8_t count, ...) {
 
     if (!program_compilation_status(application->shader_data.graphics_program)) {
         glDeleteProgram(application->shader_data.graphics_program);
-        return 0;
+        return false;
     }
 
     init_vertices(application);
-    return 1;
+    return true;
 }
 
 /**
@@ -287,7 +282,7 @@ uint8_t init_graphics(application_t *application, uint8_t count, ...) {
  *
  * @see init_graphics()
  */
-uint8_t init_compute(shader_t *shader_data, char const *filename) {
+bool init_compute(shader_t *shader_data, char const *filename) {
     shader_data->compute_program = glCreateProgram();
     uint32_t compute_shader = compile_shader(filename, GL_COMPUTE_SHADER);
 
@@ -295,7 +290,7 @@ uint8_t init_compute(shader_t *shader_data, char const *filename) {
         (void) printf("ERROR : SHADER PROGRAM - Failed to compile one or more shaders\n");
         glDeleteShader(compute_shader);
         glDeleteProgram(shader_data->compute_program);
-        return 0;
+        return false;
     }
 
     glAttachShader(shader_data->compute_program, compute_shader);
@@ -305,17 +300,18 @@ uint8_t init_compute(shader_t *shader_data, char const *filename) {
     if (!program_compilation_status(shader_data->compute_program)) {
         glDeleteShader(compute_shader);
         glDeleteProgram(shader_data->compute_program);
-        return 0;
+        return false;
     }
 
-    return 1;
+    return true;
 }
 
-uint8_t init_buffers(application_t *application) {
+bool init_buffers(application_t *application) {
     // Particles SSBO
     glGenBuffers(1, &application->shader_data.particle_ssbo);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, application->shader_data.particle_ssbo);
-    glBufferData(GL_SHADER_STORAGE_BUFFER, application->tunables.particle_count * sizeof(particle_t), application->particles, GL_DYNAMIC_DRAW);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, MAX_PARTICLES * sizeof(particle_t), NULL, GL_DYNAMIC_DRAW);
+    glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, application->tunables.particle_count * sizeof(particle_t), application->particles);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, application->shader_data.particle_ssbo);   // binding = 0
 
     glBindVertexArray(application->shader_data.vao);
@@ -325,27 +321,23 @@ uint8_t init_buffers(application_t *application) {
     glEnableVertexAttribArray(1);
     glVertexAttribDivisor(1, 1);
 
-    glVertexAttribIPointer(2, 1, GL_UNSIGNED_INT, sizeof(particle_t), (void *) offsetof(particle_t, class));
-    glEnableVertexAttribArray(2);
-    glVertexAttribDivisor(2, 1);
-
     glBindVertexArray(0);
 
     // Attraction Matrix SSBO
     glGenBuffers(1, &application->shader_data.attraction_ssbo);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, application->shader_data.attraction_ssbo);
-    glBufferData(GL_SHADER_STORAGE_BUFFER, application->attraction.length * sizeof(float), application->attraction.matrix, GL_STATIC_DRAW);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, application->attraction.length * sizeof(float), application->attraction.matrix, GL_DYNAMIC_DRAW);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, application->shader_data.attraction_ssbo); // binding = 1
 
-    return 1;
+    return true;
 }
 
-void update_particle_buffer(application_t *application) {
+void update_particle_ssbo(application_t *application) {
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, application->shader_data.particle_ssbo);
     glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, application->tunables.particle_count * sizeof(particle_t), application->particles);
 }
 
-void update_attraction_buffer(application_t *application) {
+void update_attraction_ssbo(application_t *application) {
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, application->shader_data.attraction_ssbo);
     glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, application->attraction.length * sizeof(float), application->attraction.matrix);
 }

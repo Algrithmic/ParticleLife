@@ -39,15 +39,15 @@ typedef struct application {
 } application_t;
 
 // init_application : initializes the resources for the application
-int init_application(application_t *application);
+bool init_application(application_t *application);
 
 // init_simulation : initializes the simulation particles and resources for the application
-int init_simulation(application_t *application);
+bool init_simulation(application_t *application);
 
 // destroy_application : destroys the allocated resources for the application
-int destroy_application(application_t *application);
+bool destroy_application(application_t *application);
 
 // mainloop : the application main loop
-int mainloop(application_t *application);
+bool mainloop(application_t *application);
 
 #endif
