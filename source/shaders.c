@@ -332,9 +332,9 @@ bool init_buffers(application_t *application) {
     return true;
 }
 
-void update_particle_ssbo(application_t *application) {
+void update_particle_ssbo(application_t *application, uint32_t offset, uint32_t count) {
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, application->shader_data.particle_ssbo);
-    glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, application->tunables.particle_count * sizeof(particle_t), application->particles);
+    glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset * sizeof(particle_t), count * sizeof(particle_t), &application->particles[offset]);
 }
 
 void update_attraction_ssbo(application_t *application) {

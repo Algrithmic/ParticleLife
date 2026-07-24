@@ -32,7 +32,7 @@ bool init_compute(shader_t *shader_data, char const *filename);
 
 bool init_buffers(application_t *application);
 
-void update_particle_ssbo(application_t *application);
+void update_particle_ssbo(application_t *application, uint32_t offset, uint32_t count);
 
 void update_attraction_ssbo(application_t *application);
 

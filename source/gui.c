@@ -109,8 +109,8 @@ static void update_world_section(application_t *application) {
     nk_itoa(particle_count, application->tunables.particle_count);
     nk_label(application->gui_context, particle_count, NK_TEXT_ALIGN_RIGHT | NK_TEXT_ALIGN_BOTTOM);
     nk_layout_row_dynamic(application->gui_context, DEFAULT_WIDGET_HEIGHT, 1);
-    if (nk_slider_int(application->gui_context, 0, (int *) &application->tunables.particle_count, 50000, 1)) {
-        application->tunables.dirty_particles = false; // Correct later [should be true]
+    if (nk_slider_int(application->gui_context, 0, (int *) &application->tunables.new_count, 50000, 1)) {
+        application->tunables.dirty = true; ///<---
     }
 
     // Particle Types Label

@@ -51,11 +51,12 @@ typedef struct attraction {
 
 typedef struct particle_parameters {
     uint32_t particle_count;
+    uint32_t new_count;
     uint32_t nclass;
     float attraction_radius;
     float friction_halflife;
     float delta_time;
-    bool dirty_particles;
+    bool dirty;
     bool shuffle;
 } partparams_t;
 
@@ -67,6 +68,8 @@ typedef struct particle_parameters {
 
 // init_particles : creates a pointer to an array of n particles and initializes the attraction matrix
 bool init_particles(application_t *application, uint32_t n, uint8_t num_classes);
+
+uint32_t recount_particles(application_t *application);
 
 // shuffle_particles : Shuffles particle positions, reset velocities, and shuffles attraction matrix
 void shuffle_particles(application_t *application);

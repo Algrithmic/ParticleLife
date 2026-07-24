@@ -97,23 +97,42 @@ bool init_particles(application_t *application, uint32_t n, uint8_t num_classes)
         application->attraction.matrix[i] = SDL_randf() * 2.0f - 1.0f;
 
     application->tunables.particle_count = n;
-    application->tunables.nclass = num_classes;
+    application->tunables.new_count  = n;
+    application->tunables.nclass     = num_classes;
     application->tunables.attraction_radius = ATTRACTION_RADIUS;
     application->tunables.friction_halflife = FRICTION_HALFLIFE;
     application->tunables.delta_time = DELTATIME;
-    application->tunables.dirty_particles = false;
+    application->tunables.dirty   = false;
     application->tunables.shuffle = false;
 
     return true;
 }
 
+uint32_t recount_particles(application_t *application) {
+    uint32_t old_count = application->tunables.particle_count;
+    uint32_t new_count = application->tunables.new_count;
+    if (new_count > MAX_PARTICLES) new_count = MAX_PARTICLES;
+
+    if (new_count > old_count) {
+        for (uint32_t i = old_count; i < new_count; i++) {
+            application->particles[i] = new_particle(
+                (vector2D_t) { .x = SDL_rand(application->width), .y = SDL_rand(application->height) },
+                (vector2D_t) { .x = 0.0f, .y = 0.0f }
+            );
+        }
+    }
+
+    application->tunables.particle_count = new_count;
+    return (new_count > old_count) ? (new_count - old_count) : 0;
+}
+
 void shuffle_particles(application_t *application) {
     // Shuffle Particle Parameters
     for (uint32_t i = 0; i < application->tunables.particle_count; i++) {
-        application->particles[i].position.x = SDL_rand(application->width);
-        application->particles[i].position.y = SDL_rand(application->height);
-        application->particles[i].velocity.x = 0.0f;
-        application->particles[i].velocity.y = 0.0f;
+        application->particles[i] = new_particle(
+            (vector2D_t) { .x = SDL_rand(application->width), .y = SDL_rand(application->height) },
+            (vector2D_t) { .x = 0.0f, .y = 0.0f }
+        );
     }
 
     // Fill attraction matrix | matrix[i] belongs to [-1.0f, 1.0f]

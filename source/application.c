@@ -53,6 +53,7 @@ bool init_application(application_t *application) {
 
     application->height = DEFAULT_HEIGHT;
     application->width = DEFAULT_WIDTH;
+    SDL_GetWindowSizeInPixels(application->window, &application->width, &application->height);
 
     // initialize the window
     application->window = SDL_CreateWindow("Particle Life", DEFAULT_WIDTH, DEFAULT_HEIGHT, SDL_WINDOW_OPENGL);
@@ -206,7 +207,7 @@ static void handle_events(application_t *application) {
                 break;
             }
             case SDL_EVENT_WINDOW_RESIZED: {
-                SDL_GetWindowSize(application->window, &application->width, &application->height);
+                SDL_GetWindowSizeInPixels(application->window, &application->width, &application->height);
                 glViewport(0, 0, application->width, application->height);
 
                 mat4 projection;
@@ -302,9 +303,16 @@ bool mainloop(application_t *application) {
     while (application->state == RUNNING || application->state == PAUSED) {
         handle_events(application);
         update_gui(application);
+        if (application->tunables.dirty) {
+            uint32_t old_count = application->tunables.particle_count;
+            uint32_t grown_count = recount_particles(application);
+            if (grown_count > 0) 
+                update_particle_ssbo(application, old_count, grown_count);
+            application->tunables.dirty = false;
+        }
         if (application->tunables.shuffle) {
             shuffle_particles(application);
-            update_particle_ssbo(application);
+            update_particle_ssbo(application, 0, application->tunables.particle_count);
             update_attraction_ssbo(application);
             application->tunables.shuffle = false;
         }
