@@ -11,9 +11,13 @@
 #define NK_SDL_GL3_IMPLEMENTATION
 
 #include <stdio.h>
+#include <string.h>
+
+#include "SDL.h"
 
 #include "application.h"
 #include "gui.h"
+#include "presets.h"
 
 /**
  * init_gui
@@ -96,6 +100,11 @@ static void update_state_section(application_t *application) {
     }
 }
 
+#define COLOR_RANGE 255.0f
+
+// Which particle color is currently being edited
+static int active_color_index = -1;
+
 static void update_world_section(application_t *application) {
     // Particle Settings Label
     nk_layout_row_dynamic(application->gui_context, DEFAULT_WIDGET_HEIGHT, 1);
@@ -105,29 +114,66 @@ static void update_world_section(application_t *application) {
     nk_layout_row_static(application->gui_context, 20, DEFAULT_PANEL_WIDTH / 2 - PANEL_CONTENT_RIGHT_PADDING, 2);
     nk_label(application->gui_context, "Particle Count", NK_TEXT_ALIGN_LEFT | NK_TEXT_ALIGN_BOTTOM);
 
-    char particle_count[MAX_NUM_COUNT] = { '\0' };
-    nk_itoa(particle_count, application->tunables.particle_count);
-    nk_label(application->gui_context, particle_count, NK_TEXT_ALIGN_RIGHT | NK_TEXT_ALIGN_BOTTOM);
+    nk_labelf(application->gui_context, NK_TEXT_ALIGN_RIGHT | NK_TEXT_ALIGN_BOTTOM, "%d", application->tunables.particle_count);
     nk_layout_row_dynamic(application->gui_context, DEFAULT_WIDGET_HEIGHT, 1);
     if (nk_slider_int(application->gui_context, 0, (int *) &application->tunables.new_count, 50000, 1)) {
-        application->tunables.dirty = true; ///<---
+        application->tunables.dirty = true;
     }
 
     // Particle Types Label
     nk_layout_row_static(application->gui_context, 20, DEFAULT_PANEL_WIDTH / 2 - PANEL_CONTENT_RIGHT_PADDING, 2);
     nk_label(application->gui_context, "Particle Types", NK_TEXT_ALIGN_LEFT | NK_TEXT_ALIGN_BOTTOM);
 
-    char class_count[MAX_NUM_COUNT] = { '\0' };
-    nk_itoa(class_count, application->tunables.nclass);
-    nk_label(application->gui_context, class_count, NK_TEXT_ALIGN_RIGHT | NK_TEXT_ALIGN_BOTTOM);
+    nk_labelf(application->gui_context, NK_TEXT_ALIGN_RIGHT | NK_TEXT_ALIGN_BOTTOM, "%d", application->tunables.nclass);
     nk_layout_row_dynamic(application->gui_context, DEFAULT_WIDGET_HEIGHT, 1);
-    if (nk_slider_int(application->gui_context, 1, (int *) &application->tunables.nclass, 8, 1)) {
-        // do nothing
+    nk_slider_int(application->gui_context, 1, (int *) &application->tunables.nclass, 8, 1);
+
+    // Particle Colors Label
+    nk_layout_row_static(application->gui_context, 15, DEFAULT_PANEL_WIDTH / 2 - PANEL_CONTENT_RIGHT_PADDING, 2);
+    nk_label(application->gui_context, "Particle Colors", NK_TEXT_ALIGN_LEFT | NK_TEXT_ALIGN_BOTTOM);
+    // For each color type, display a circle with each corresponding color
+    nk_layout_row_dynamic(application->gui_context, DEFAULT_WIDGET_HEIGHT, application->tunables.nclass);
+    for (size_t i = 0; i < application->tunables.nclass; i++) {
+        if (nk_button_color(application->gui_context, (struct nk_color) {
+            .r = (nk_byte) (COLOR_RANGE * application->tunables.rgba_palette[i][0]),
+            .g = (nk_byte) (COLOR_RANGE * application->tunables.rgba_palette[i][1]),
+            .b = (nk_byte) (COLOR_RANGE * application->tunables.rgba_palette[i][2]),
+            .a = (nk_byte) (COLOR_RANGE)
+        } )) {
+            active_color_index = (int) i;
+        }
     }
 
-    // Particle Colors
-    // For each color type, display a circle with each corresponding color
-    // Below add a combobox with color presets
+    if (active_color_index >= 0) {
+        if (nk_popup_begin(application->gui_context, NK_POPUP_STATIC, "Edit Color",
+                            NK_WINDOW_CLOSABLE, nk_rect(DEFAULT_PANEL_WIDTH + 10, 50, 220, 260))) {
+            nk_layout_row_dynamic(application->gui_context, 220, 1);
+            nk_color_pick(application->gui_context, (struct nk_colorf *) application->tunables.rgba_palette[active_color_index], NK_RGBA);
+            nk_popup_end(application->gui_context);
+        } 
+        else active_color_index = -1;
+    }
+
+    // combobox and randomize button
+    static const float preset_row_ratio[] = { 0.7f, 0.3f };
+    nk_layout_row(application->gui_context, NK_DYNAMIC, 25, 2, preset_row_ratio);
+    if (nk_combo_begin_label(application->gui_context, "Presets",
+                              nk_vec2(DEFAULT_PANEL_WIDTH - PANEL_CONTENT_RIGHT_PADDING, 200))) {
+        nk_layout_row_dynamic(application->gui_context, 25, 1);
+        for (int i = 0; i < COUNT; i++) {
+            if (nk_combo_item_label(application->gui_context, preset_names[i], NK_TEXT_LEFT)) {
+                memcpy(application->tunables.rgba_palette, color_presets[i], sizeof(application->tunables.rgba_palette));
+            }
+        }
+        nk_combo_end(application->gui_context);
+    }
+    if (nk_button_label(application->gui_context, "Randomize")) {
+        for (size_t i = 0; i < application->tunables.nclass; i++) {
+            application->tunables.rgba_palette[i][0] = SDL_randf();
+            application->tunables.rgba_palette[i][1] = SDL_randf();
+            application->tunables.rgba_palette[i][2] = SDL_randf();
+        }
+    }
 }
 
 static void update_attraction_matrix_section(application_t *application) {

@@ -15,8 +15,8 @@
 #include "particle.h"
 #include "application.h"
 
-// color classes classified by class_t
-float rgba[MAX_NUM_CLASSES][NUM_CHANNELS] = {
+// Default color class colors
+static float const rgba[MAX_NUM_CLASSES][NUM_CHANNELS] = {
     { 1.00f, 0.23f, 0.19f, 1.0f },  // Red
     { 0.00f, 0.48f, 1.00f, 1.0f },  // Blue
     { 0.20f, 0.78f, 0.35f, 1.0f },  // Green
@@ -44,6 +44,21 @@ static particle_t new_particle(vector2D_t position, vector2D_t velocity) {
         .position = position,
         .velocity = velocity
     };
+}
+
+static bool init_tunables(application_t *application, uint32_t n, uint8_t num_classes) {
+    application->tunables.particle_count = n;
+    application->tunables.new_count  = n;
+    application->tunables.nclass     = num_classes;
+    application->tunables.attraction_radius = ATTRACTION_RADIUS;
+    application->tunables.friction_halflife = FRICTION_HALFLIFE;
+    application->tunables.delta_time = DELTATIME;
+    application->tunables.dirty   = false;
+    application->tunables.shuffle = false;
+
+    memcpy(application->tunables.rgba_palette, rgba, sizeof(rgba));
+
+    return true;
 }
 
 /**
@@ -96,14 +111,7 @@ bool init_particles(application_t *application, uint32_t n, uint8_t num_classes)
     for (uint32_t i = 0; i < application->attraction.length; i++)
         application->attraction.matrix[i] = SDL_randf() * 2.0f - 1.0f;
 
-    application->tunables.particle_count = n;
-    application->tunables.new_count  = n;
-    application->tunables.nclass     = num_classes;
-    application->tunables.attraction_radius = ATTRACTION_RADIUS;
-    application->tunables.friction_halflife = FRICTION_HALFLIFE;
-    application->tunables.delta_time = DELTATIME;
-    application->tunables.dirty   = false;
-    application->tunables.shuffle = false;
+    (void) init_tunables(application, n, num_classes);
 
     return true;
 }

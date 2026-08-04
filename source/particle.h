@@ -36,8 +36,6 @@ typedef enum classifier {
 
 #define NUM_CHANNELS    4
 
-extern float rgba[MAX_NUM_CLASSES][NUM_CHANNELS];
-
 typedef struct particle {
     vector2D_t position;        ///< position of the particle (x, y)
     vector2D_t velocity;        ///< velocity of the particle (x, y)
@@ -53,6 +51,7 @@ typedef struct particle_parameters {
     uint32_t particle_count;
     uint32_t new_count;
     uint32_t nclass;
+    float rgba_palette[MAX_NUM_CLASSES][NUM_CHANNELS];
     float attraction_radius;
     float friction_halflife;
     float delta_time;
@@ -60,8 +59,8 @@ typedef struct particle_parameters {
     bool shuffle;
 } partparams_t;
 
-#define MAX_PARTICLES       50000
-#define RADIUS              3.0f
+#define MAX_PARTICLES       35000
+#define RADIUS              1.5f
 #define ATTRACTION_RADIUS   225.0f
 #define FRICTION_HALFLIFE   2.0f
 #define DELTATIME           0.1f

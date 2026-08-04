@@ -53,15 +53,16 @@ bool init_application(application_t *application) {
 
     application->height = DEFAULT_HEIGHT;
     application->width = DEFAULT_WIDTH;
-    SDL_GetWindowSizeInPixels(application->window, &application->width, &application->height);
-
+    
     // initialize the window
-    application->window = SDL_CreateWindow("Particle Life", DEFAULT_WIDTH, DEFAULT_HEIGHT, SDL_WINDOW_OPENGL);
+    application->window = SDL_CreateWindow("Particle Life", DEFAULT_WIDTH, DEFAULT_HEIGHT, 
+        SDL_WINDOW_OPENGL | SDL_WINDOW_HIGH_PIXEL_DENSITY);
     if (application->window == NULL) {
         printf("Window Creation failed. ERROR: %s\n", SDL_GetError());
         SDL_Quit();
         return false;
     }
+    SDL_GetWindowSizeInPixels(application->window, &application->width, &application->height);
 
     if (!SDL_SetWindowResizable(application->window, true)) {
         printf("Unable to set window resizable. ERROR: %s\n", SDL_GetError());
@@ -273,7 +274,7 @@ static void update_physics(application_t *application) {
 static void update_graphics(application_t *application) {
     glUseProgram(application->shader_data.graphics_program);
     glBindVertexArray(application->shader_data.vao);
-    glUniform4fv(glGetUniformLocation(application->shader_data.graphics_program, "palette"), MAX_NUM_CLASSES, &rgba[0][0]);
+    glUniform4fv(glGetUniformLocation(application->shader_data.graphics_program, "palette"), MAX_NUM_CLASSES, &application->tunables.rgba_palette[0][0]);
     glUniform1f(glGetUniformLocation(application->shader_data.graphics_program, "radius"), RADIUS);
     glUniform1ui(glGetUniformLocation(application->shader_data.graphics_program, "nclass"), application->tunables.nclass);
 
