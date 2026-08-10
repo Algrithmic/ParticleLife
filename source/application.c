@@ -216,6 +216,8 @@ static void handle_events(application_t *application) {
                 SDL_GetWindowSizeInPixels(application->window, &application->width, &application->height);
                 glViewport(0, 0, application->width, application->height);
 
+                // Bind new screen size to graphics program immediately
+                glUseProgram(application->shader_data.graphics_program);
                 mat4 projection;
                 glm_ortho(0.0f, (float) application->width, (float) application->height, 0.0f, -1.0f, 1.0f, projection);
                 glUniformMatrix4fv(
@@ -224,6 +226,8 @@ static void handle_events(application_t *application) {
                 );
                 break;
             }
+
+            // @todo: next feature - mouse interaction. zoom in and zoom out?
             case SDL_EVENT_MOUSE_MOTION:
             case SDL_EVENT_MOUSE_BUTTON_DOWN:
             case SDL_EVENT_MOUSE_BUTTON_UP:

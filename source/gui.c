@@ -70,7 +70,7 @@ bool destroy_gui(void) {
 }
 
 
-#define DEFAULT_PANEL_WIDTH     320
+#define DEFAULT_PANEL_WIDTH     325
 #define PANEL_CONTENT_RIGHT_PADDING 20
 #define DEFAULT_WIDGET_HEIGHT   35
 #define MAX_NUM_COUNT           8
@@ -386,7 +386,7 @@ static void update_physics_section(application_t *application) {
     nk_labelf(ctx, NK_TEXT_ALIGN_RIGHT | NK_TEXT_ALIGN_BOTTOM, "%g", *deltatime);
     nk_layout_space_begin(ctx, NK_STATIC, DEFAULT_WIDGET_HEIGHT, 1);
     nk_layout_space_push(ctx, nk_rect(SLIDER_PADDING, 0, SLIDER_WIDTH, SLIDER_HEIGHT));
-    nk_slider_float(ctx, 0.0f, deltatime, 1.0f, 0.025f);
+    nk_slider_float(ctx, 0.025f, deltatime, 1.0f, 0.025f);
     nk_layout_space_end(ctx);
 
     // Attraction Radius Label
@@ -421,7 +421,7 @@ static void update_physics_section(application_t *application) {
  */
 void update_gui(application_t *application) {
     if (nk_begin(application->gui_context, "Control Panel", nk_rect(0, 0, DEFAULT_PANEL_WIDTH, application->height), 
-        NK_WINDOW_BORDER | NK_WINDOW_TITLE | NK_WINDOW_MINIMIZABLE | NK_WINDOW_MOVABLE)
+        NK_WINDOW_BORDER | NK_WINDOW_TITLE | NK_WINDOW_MINIMIZABLE)
     ) {
         update_state_section(application);
         update_world_section(application);
