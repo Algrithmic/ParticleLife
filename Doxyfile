@@ -17,10 +17,15 @@ OUTPUT_DIRECTORY       = docs
 #---------------------------------------------------------------------------
 # Input
 #---------------------------------------------------------------------------
-INPUT                  = source README.md
+INPUT                  = source shaders README.md
 USE_MDFILE_AS_MAINPAGE = README.md
-FILE_PATTERNS          = *.c *.h
+FILE_PATTERNS          = *.c *.h *.comp *.vert *.frag
 RECURSIVE              = YES
+
+# GLSL shaders aren't a language Doxygen knows, but they're C-like enough that the
+# C parser handles them well. Map the shader extensions to C so their file headers
+# and top-level declarations show up in the docs.
+EXTENSION_MAPPING      = comp=C vert=C frag=C
 
 # The vendored libraries (GLAD, SDL3, Nuklear) are not our code — skip them.
 # They are already outside INPUT, but this makes the intent explicit.

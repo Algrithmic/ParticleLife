@@ -1,9 +1,17 @@
+/**
+ * @file presets.h
+ * @brief Built-in color palettes and attraction-matrix presets.
+ *
+ * Defines the selectable color palettes and the named attraction-matrix presets
+ * offered in the GUI, along with their display names. Each table is indexed by its
+ * matching enum, and the trailing *_COUNT enumerator gives the number of presets.
+ */
 #ifndef PRESETS_H
 #define PRESETS_H
 
 #include "particle.h"   // NUM_CHANNELS
 
-// Color preset enum
+/// Selectable color palette; also indexes color_presets[] and color_preset_names[].
 typedef enum presets {
     RAINBOW,
     SUNSET,
@@ -13,13 +21,13 @@ typedef enum presets {
     NEON,
     AUTUMN,
     GRAYSCALE,
-    COUNT
-} preset_t;
+    COLOR_PRESET_COUNT
+} color_preset_t;
 
 #define COLORS_PER_PRESET   8
 
-// Color preset names
-static char const * const preset_names[COUNT] = {
+/// Human-readable names for each color palette, indexed by color_preset_t.
+static char const * const color_preset_names[COLOR_PRESET_COUNT] = {
     "Rainbow",
     "Sunset",
     "Ocean",
@@ -30,8 +38,8 @@ static char const * const preset_names[COUNT] = {
     "Grayscale"
 };
 
-// Color preset actual values
-static float const color_presets[COUNT][COLORS_PER_PRESET][NUM_CHANNELS] = {
+/// RGBA color values for each palette: [preset][class][channel], all in [0, 1].
+static float const color_presets[COLOR_PRESET_COUNT][COLORS_PER_PRESET][NUM_CHANNELS] = {
     [RAINBOW] = {
         {1.000f, 0.000f, 0.000f, 1.0f},
         {1.000f, 0.498f, 0.000f, 1.0f},
@@ -119,5 +127,151 @@ static float const color_presets[COUNT][COLORS_PER_PRESET][NUM_CHANNELS] = {
         {1.000f, 1.000f, 1.000f, 1.0f}
     }
 };
+
+/// Named attraction-matrix preset; indexes matrix_presets[] and matrix_preset_names[].
+typedef enum matrix_presets {
+    SNAKE,          // cyclic chase: each class hunts the next -> long chains
+    PREDATOR_PREY,  // rock-paper-scissors cycle: chase prey, flee predator
+    CELLS,          // strong self + directional cross links -> cell membranes
+    CHECKERBOARD,   // parity-based attraction -> alternating segregation
+    SYMMETRIC,      // like attracts like (distance based) -> layered clusters
+    CLUMPS,         // strong self-attraction, mutual repulsion -> tight blobs
+    ORBIT,          // attracted ahead, repelled behind -> rotating rings
+    STAR,           // one universal attractor class -> core with orbiting shells
+    WEB,            // classes pair off and bond -> connected lattice / network
+    GAS,            // everything repels everything -> even dispersion
+    CHAOS,          // fixed but irregular matrix -> unpredictable churn
+    MATRIX_PRESET_COUNT
+} matrix_preset_t;
+
+/// Human-readable names for each attraction-matrix preset, indexed by matrix_preset_t.
+static char const * const matrix_preset_names[MATRIX_PRESET_COUNT] = {
+    "Snake",
+    "Predator-Prey",
+    "Cells",
+    "Checkerboard",
+    "Symmetric",
+    "Clumps",
+    "Orbit",
+    "Star",
+    "Web",
+    "Gas",
+    "Chaos"
+};
+
+/// Attraction weights for each preset: a row-major MAX_NUM_CLASSES^2 matrix, values in [-1, 1].
+static float const matrix_presets[MATRIX_PRESET_COUNT][MAX_NUM_CLASSES * MAX_NUM_CLASSES] = {
+    [SNAKE] = {
+         0.3f,  1.0f, -0.2f, -0.2f, -0.2f, -0.2f, -0.2f, -0.2f,
+        -0.2f,  0.3f,  1.0f, -0.2f, -0.2f, -0.2f, -0.2f, -0.2f,
+        -0.2f, -0.2f,  0.3f,  1.0f, -0.2f, -0.2f, -0.2f, -0.2f,
+        -0.2f, -0.2f, -0.2f,  0.3f,  1.0f, -0.2f, -0.2f, -0.2f,
+        -0.2f, -0.2f, -0.2f, -0.2f,  0.3f,  1.0f, -0.2f, -0.2f,
+        -0.2f, -0.2f, -0.2f, -0.2f, -0.2f,  0.3f,  1.0f, -0.2f,
+        -0.2f, -0.2f, -0.2f, -0.2f, -0.2f, -0.2f,  0.3f,  1.0f,
+         1.0f, -0.2f, -0.2f, -0.2f, -0.2f, -0.2f, -0.2f,  0.3f
+    },
+    [PREDATOR_PREY] = {
+         0.2f, -0.8f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.8f,
+         0.8f,  0.2f, -0.8f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,
+         0.0f,  0.8f,  0.2f, -0.8f,  0.0f,  0.0f,  0.0f,  0.0f,
+         0.0f,  0.0f,  0.8f,  0.2f, -0.8f,  0.0f,  0.0f,  0.0f,
+         0.0f,  0.0f,  0.0f,  0.8f,  0.2f, -0.8f,  0.0f,  0.0f,
+         0.0f,  0.0f,  0.0f,  0.0f,  0.8f,  0.2f, -0.8f,  0.0f,
+         0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.8f,  0.2f, -0.8f,
+        -0.8f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.8f,  0.2f
+    },
+    [CELLS] = {
+         0.8f,  0.3f, -0.1f, -0.1f, -0.1f, -0.1f, -0.1f, -0.4f,
+        -0.4f,  0.8f,  0.3f, -0.1f, -0.1f, -0.1f, -0.1f, -0.1f,
+        -0.1f, -0.4f,  0.8f,  0.3f, -0.1f, -0.1f, -0.1f, -0.1f,
+        -0.1f, -0.1f, -0.4f,  0.8f,  0.3f, -0.1f, -0.1f, -0.1f,
+        -0.1f, -0.1f, -0.1f, -0.4f,  0.8f,  0.3f, -0.1f, -0.1f,
+        -0.1f, -0.1f, -0.1f, -0.1f, -0.4f,  0.8f,  0.3f, -0.1f,
+        -0.1f, -0.1f, -0.1f, -0.1f, -0.1f, -0.4f,  0.8f,  0.3f,
+         0.3f, -0.1f, -0.1f, -0.1f, -0.1f, -0.1f, -0.4f,  0.8f
+    },
+    [CHECKERBOARD] = {
+         0.6f, -0.6f,  0.6f, -0.6f,  0.6f, -0.6f,  0.6f, -0.6f,
+        -0.6f,  0.6f, -0.6f,  0.6f, -0.6f,  0.6f, -0.6f,  0.6f,
+         0.6f, -0.6f,  0.6f, -0.6f,  0.6f, -0.6f,  0.6f, -0.6f,
+        -0.6f,  0.6f, -0.6f,  0.6f, -0.6f,  0.6f, -0.6f,  0.6f,
+         0.6f, -0.6f,  0.6f, -0.6f,  0.6f, -0.6f,  0.6f, -0.6f,
+        -0.6f,  0.6f, -0.6f,  0.6f, -0.6f,  0.6f, -0.6f,  0.6f,
+         0.6f, -0.6f,  0.6f, -0.6f,  0.6f, -0.6f,  0.6f, -0.6f,
+        -0.6f,  0.6f, -0.6f,  0.6f, -0.6f,  0.6f, -0.6f,  0.6f
+    },
+    [SYMMETRIC] = {
+         1.000f,  0.714f,  0.429f,  0.143f, -0.143f, -0.429f, -0.714f, -1.000f,
+         0.714f,  1.000f,  0.714f,  0.429f,  0.143f, -0.143f, -0.429f, -0.714f,
+         0.429f,  0.714f,  1.000f,  0.714f,  0.429f,  0.143f, -0.143f, -0.429f,
+         0.143f,  0.429f,  0.714f,  1.000f,  0.714f,  0.429f,  0.143f, -0.143f,
+        -0.143f,  0.143f,  0.429f,  0.714f,  1.000f,  0.714f,  0.429f,  0.143f,
+        -0.429f, -0.143f,  0.143f,  0.429f,  0.714f,  1.000f,  0.714f,  0.429f,
+        -0.714f, -0.429f, -0.143f,  0.143f,  0.429f,  0.714f,  1.000f,  0.714f,
+        -1.000f, -0.714f, -0.429f, -0.143f,  0.143f,  0.429f,  0.714f,  1.000f
+    },
+    [CLUMPS] = {
+         1.0f, -0.3f, -0.3f, -0.3f, -0.3f, -0.3f, -0.3f, -0.3f,
+        -0.3f,  1.0f, -0.3f, -0.3f, -0.3f, -0.3f, -0.3f, -0.3f,
+        -0.3f, -0.3f,  1.0f, -0.3f, -0.3f, -0.3f, -0.3f, -0.3f,
+        -0.3f, -0.3f, -0.3f,  1.0f, -0.3f, -0.3f, -0.3f, -0.3f,
+        -0.3f, -0.3f, -0.3f, -0.3f,  1.0f, -0.3f, -0.3f, -0.3f,
+        -0.3f, -0.3f, -0.3f, -0.3f, -0.3f,  1.0f, -0.3f, -0.3f,
+        -0.3f, -0.3f, -0.3f, -0.3f, -0.3f, -0.3f,  1.0f, -0.3f,
+        -0.3f, -0.3f, -0.3f, -0.3f, -0.3f, -0.3f, -0.3f,  1.0f
+    },
+    [ORBIT] = {
+         0.2f,  0.7f,  0.4f,  0.0f,  0.0f,  0.0f,  0.0f, -0.5f,
+        -0.5f,  0.2f,  0.7f,  0.4f,  0.0f,  0.0f,  0.0f,  0.0f,
+         0.0f, -0.5f,  0.2f,  0.7f,  0.4f,  0.0f,  0.0f,  0.0f,
+         0.0f,  0.0f, -0.5f,  0.2f,  0.7f,  0.4f,  0.0f,  0.0f,
+         0.0f,  0.0f,  0.0f, -0.5f,  0.2f,  0.7f,  0.4f,  0.0f,
+         0.0f,  0.0f,  0.0f,  0.0f, -0.5f,  0.2f,  0.7f,  0.4f,
+         0.4f,  0.0f,  0.0f,  0.0f,  0.0f, -0.5f,  0.2f,  0.7f,
+         0.7f,  0.4f,  0.0f,  0.0f,  0.0f,  0.0f, -0.5f,  0.2f
+    },
+    [STAR] = {
+         0.5f,  0.1f,  0.1f,  0.1f,  0.1f,  0.1f,  0.1f,  0.1f,
+         0.9f,  0.2f, -0.3f, -0.3f, -0.3f, -0.3f, -0.3f, -0.3f,
+         0.9f, -0.3f,  0.2f, -0.3f, -0.3f, -0.3f, -0.3f, -0.3f,
+         0.9f, -0.3f, -0.3f,  0.2f, -0.3f, -0.3f, -0.3f, -0.3f,
+         0.9f, -0.3f, -0.3f, -0.3f,  0.2f, -0.3f, -0.3f, -0.3f,
+         0.9f, -0.3f, -0.3f, -0.3f, -0.3f,  0.2f, -0.3f, -0.3f,
+         0.9f, -0.3f, -0.3f, -0.3f, -0.3f, -0.3f,  0.2f, -0.3f,
+         0.9f, -0.3f, -0.3f, -0.3f, -0.3f, -0.3f, -0.3f,  0.2f
+    },
+    [WEB] = {
+         0.3f,  0.8f, -0.2f, -0.2f, -0.2f, -0.2f, -0.2f, -0.2f,
+         0.8f,  0.3f, -0.2f, -0.2f, -0.2f, -0.2f, -0.2f, -0.2f,
+        -0.2f, -0.2f,  0.3f,  0.8f, -0.2f, -0.2f, -0.2f, -0.2f,
+        -0.2f, -0.2f,  0.8f,  0.3f, -0.2f, -0.2f, -0.2f, -0.2f,
+        -0.2f, -0.2f, -0.2f, -0.2f,  0.3f,  0.8f, -0.2f, -0.2f,
+        -0.2f, -0.2f, -0.2f, -0.2f,  0.8f,  0.3f, -0.2f, -0.2f,
+        -0.2f, -0.2f, -0.2f, -0.2f, -0.2f, -0.2f,  0.3f,  0.8f,
+        -0.2f, -0.2f, -0.2f, -0.2f, -0.2f, -0.2f,  0.8f,  0.3f
+    },
+    [GAS] = {
+        -0.4f, -0.4f, -0.4f, -0.4f, -0.4f, -0.4f, -0.4f, -0.4f,
+        -0.4f, -0.4f, -0.4f, -0.4f, -0.4f, -0.4f, -0.4f, -0.4f,
+        -0.4f, -0.4f, -0.4f, -0.4f, -0.4f, -0.4f, -0.4f, -0.4f,
+        -0.4f, -0.4f, -0.4f, -0.4f, -0.4f, -0.4f, -0.4f, -0.4f,
+        -0.4f, -0.4f, -0.4f, -0.4f, -0.4f, -0.4f, -0.4f, -0.4f,
+        -0.4f, -0.4f, -0.4f, -0.4f, -0.4f, -0.4f, -0.4f, -0.4f,
+        -0.4f, -0.4f, -0.4f, -0.4f, -0.4f, -0.4f, -0.4f, -0.4f,
+        -0.4f, -0.4f, -0.4f, -0.4f, -0.4f, -0.4f, -0.4f, -0.4f
+    },
+    [CHAOS] = {
+         0.5f, -0.7f,  0.2f,  0.9f, -0.4f, -0.1f,  0.6f, -0.8f,
+        -0.3f,  0.4f,  0.8f, -0.6f,  0.1f, -0.9f,  0.3f,  0.7f,
+         0.7f, -0.2f, -0.5f,  0.3f,  0.9f, -0.4f, -0.8f,  0.1f,
+        -0.6f,  0.9f, -0.1f,  0.5f, -0.7f,  0.2f,  0.4f, -0.3f,
+         0.3f, -0.8f,  0.6f, -0.2f,  0.5f,  0.8f, -0.5f, -0.4f,
+        -0.9f,  0.1f, -0.4f,  0.7f, -0.3f,  0.4f,  0.9f, -0.6f,
+         0.4f,  0.6f, -0.7f, -0.1f,  0.8f, -0.5f,  0.2f,  0.5f,
+        -0.2f, -0.5f,  0.9f,  0.4f, -0.6f,  0.7f, -0.3f,  0.6f
+    }
+};
+
 
 #endif // PRESETS_H

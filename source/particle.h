@@ -36,6 +36,7 @@ typedef enum classifier {
 
 #define NUM_CHANNELS    4
 
+/// A single simulated particle. Its class is derived from its index, not stored.
 typedef struct particle {
     vector2D_t position;        ///< position of the particle (x, y)
     vector2D_t velocity;        ///< velocity of the particle (x, y)
@@ -47,33 +48,36 @@ typedef struct attraction {
     float *matrix;      ///< Attraction weights in [-1, 1], class i toward class j.
 } attraction_t;
 
+/// User-tunable simulation parameters, edited via the GUI and read each frame.
 typedef struct particle_parameters {
-    uint32_t particle_count;
-    uint32_t new_count;
-    uint32_t nclass;
-    float rgba_palette[MAX_NUM_CLASSES][NUM_CHANNELS];
-    float attraction_radius;
-    float friction_halflife;
-    float delta_time;
-    bool dirty;
-    bool shuffle;
+    uint32_t particle_count;    ///< Number of active particles currently simulated.
+    uint32_t new_count;         ///< Pending count from the GUI slider; applied when dirty_count is set.
+    uint32_t nclass;            ///< Number of active particle classes (1..MAX_NUM_CLASSES).
+    float rgba_palette[MAX_NUM_CLASSES][NUM_CHANNELS]; ///< Per-class RGBA color, values in [0, 1].
+    float attraction_radius;    ///< Maximum distance over which particles interact.
+    float friction_halflife;    ///< Time for velocity to decay by half (velocity damping).
+    float delta_time;           ///< Simulation time step per frame.
+    bool dirty_count;           ///< Set when new_count differs and the particle buffer needs resizing.
+    bool dirty_matrix;          ///< Set when the attraction matrix changed and must be re-uploaded.
+    bool shuffle;               ///< Set to request a full randomized restart next frame.
 } partparams_t;
 
 #define MAX_PARTICLES       35000
-#define RADIUS              1.5f
-#define ATTRACTION_RADIUS   225.0f
+#define RADIUS              2.0f
+#define ATTRACTION_RADIUS   100.0f
 #define FRICTION_HALFLIFE   2.0f
-#define DELTATIME           0.1f
+#define DELTATIME           0.075f
 
-// init_particles : creates a pointer to an array of n particles and initializes the attraction matrix
+/// Allocate the particle array and attraction matrix and seed the tunables.
 bool init_particles(application_t *application, uint32_t n, uint8_t num_classes);
 
+/// Apply a pending particle-count change; returns the count of newly spawned particles.
 uint32_t recount_particles(application_t *application);
 
-// shuffle_particles : Shuffles particle positions, reset velocities, and shuffles attraction matrix
+/// Respawn all particles at random positions and re-randomize the attraction matrix.
 void shuffle_particles(application_t *application);
 
-// destroy_particles : destroys (frees) the particles array
+/// Free the particle array and attraction matrix.
 bool destroy_particles(application_t *application);
 
 #endif

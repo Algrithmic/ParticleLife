@@ -144,12 +144,12 @@ static int32_t program_compilation_status(uint32_t program) {
  *
  * Creates a VAO, a static VBO for the shared particle shape vertices, and a
  * dynamic VBO for per-instance particle data. Configures vertex attribute
- * pointers for position (location 0), instance position (location 1), and
- * instance class (location 2). Stores the resulting VAO and instance VBO
- * handles in shader_data.
+ * pointers for the shape vertex position (location 0) and the per-instance
+ * particle position (location 1, advanced once per instance). Stores the
+ * resulting VAO and instance VBO handles in application->shader_data.
  *
- * @param shader_data  Pointer to the shader state; vao and vbo fields are set on return.
- * @param particles    Pointer to the particle array used to populate the instance VBO.
+ * @param application  Pointer to the application; its particle array seeds the
+ *                     instance VBO and its shader_data.vao/vbo are set on return.
  *
  * @note This is a static internal helper and should only be called from init_graphics().
  */
@@ -212,9 +212,8 @@ static bool has_extension(char const *filename, char const *extension) {
  * compile_shader() based on file extension (.vert or .frag). Links the compiled
  * shaders into a graphics program and initializes vertex buffers via init_vertices().
  *
- * @param shader_data  Pointer to the shader state; graphics_program, vao, and vbo
- *                     are set on success.
- * @param particles    Pointer to the particle array passed to init_vertices().
+ * @param application  Pointer to the application; its shader_data.graphics_program,
+ *                     vao, and vbo are set on success.
  * @param count        Number of shader filenames in the variadic argument list.
  * @param ...          Shader source filenames (char *); must match count.
  * @return             1 on success, 0 if any shader fails to compile or link.
@@ -306,6 +305,25 @@ bool init_compute(shader_t *shader_data, char const *filename) {
     return true;
 }
 
+/**
+ * init_buffers
+ *
+ * @brief Creates and binds the shader storage buffers shared with the compute shader.
+ *
+ * Allocates the particle SSBO at MAX_PARTICLES capacity and uploads the initial
+ * active particles, binding it to binding point 0. Re-points the render VAO's
+ * instance attribute (location 1) at this SSBO so the compute shader's output is
+ * drawn directly without a copy. Then creates the attraction-matrix SSBO, uploads
+ * its contents, and binds it to binding point 1.
+ *
+ * @param application  Pointer to the application holding the particle and
+ *                     attraction data; the SSBO handles are stored in shader_data.
+ * @return             1 on success.
+ *
+ * @note Must be called after init_graphics() (which creates the VAO) and
+ *       init_particles() (which fills the particle and attraction data).
+ * @see  update_particle_ssbo(), update_attraction_ssbo()
+ */
 bool init_buffers(application_t *application) {
     // Particles SSBO
     glGenBuffers(1, &application->shader_data.particle_ssbo);
@@ -332,11 +350,39 @@ bool init_buffers(application_t *application) {
     return true;
 }
 
+/**
+ * update_particle_ssbo
+ *
+ * @brief Re-uploads a contiguous range of particles to the particle SSBO.
+ *
+ * Uploads count particles starting at offset from the CPU-side particle array
+ * into the corresponding region of the GPU buffer. Used to push only the changed
+ * slice (e.g. newly spawned particles) rather than the whole array.
+ *
+ * @param application  Pointer to the application holding the particle data and SSBO.
+ * @param offset       Index of the first particle to upload.
+ * @param count        Number of particles to upload starting at offset.
+ *
+ * @see  recount_particles(), shuffle_particles()
+ */
 void update_particle_ssbo(application_t *application, uint32_t offset, uint32_t count) {
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, application->shader_data.particle_ssbo);
     glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset * sizeof(particle_t), count * sizeof(particle_t), &application->particles[offset]);
 }
 
+/**
+ * update_attraction_ssbo
+ *
+ * @brief Re-uploads the full attraction matrix to its SSBO.
+ *
+ * Copies the entire CPU-side attraction matrix into the GPU buffer so the compute
+ * shader sees the latest inter-class weights. Called whenever the matrix is edited,
+ * randomized, or loaded from a preset.
+ *
+ * @param application  Pointer to the application holding the attraction matrix and SSBO.
+ *
+ * @see  update_particle_ssbo()
+ */
 void update_attraction_ssbo(application_t *application) {
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, application->shader_data.attraction_ssbo);
     glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, application->attraction.length * sizeof(float), application->attraction.matrix);

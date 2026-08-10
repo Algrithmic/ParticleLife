@@ -84,7 +84,12 @@ bool init_application(application_t *application) {
     if (!gladLoadGLLoader((GLADloadproc) SDL_GL_GetProcAddress)) {
         printf("Failed to initialize GLAD. ERROR: %s\n", SDL_GetError());
     }
-    
+
+    // Initialize text input to the application
+    if (!SDL_StartTextInput(application->window)) {
+        printf("Unable to start text input. ERROR: %s\n", SDL_GetError());
+    }
+
     application->state = RUNNING;
 
     return true;
@@ -304,12 +309,16 @@ bool mainloop(application_t *application) {
     while (application->state == RUNNING || application->state == PAUSED) {
         handle_events(application);
         update_gui(application);
-        if (application->tunables.dirty) {
+        if (application->tunables.dirty_count) {
             uint32_t old_count = application->tunables.particle_count;
             uint32_t grown_count = recount_particles(application);
             if (grown_count > 0) 
                 update_particle_ssbo(application, old_count, grown_count);
-            application->tunables.dirty = false;
+            application->tunables.dirty_count = false;
+        }
+        if (application->tunables.dirty_matrix) {
+            update_attraction_ssbo(application);
+            application->tunables.dirty_matrix = false;
         }
         if (application->tunables.shuffle) {
             shuffle_particles(application);

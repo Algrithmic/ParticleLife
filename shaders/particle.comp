@@ -1,6 +1,18 @@
+/**
+ * @file particle.comp
+ * @brief Compute shader that advances the particle simulation one step.
+ *
+ * One invocation per particle (256 per workgroup). Each invocation sums the
+ * pairwise forces from every other particle within attractionRadius, using the
+ * inter-class attraction matrix and a Lenia-style force curve (forceFn), applies
+ * velocity friction, then integrates position with screen-edge wrapping. Reads
+ * and writes the shared particle buffer in place; matrix and tunables arrive as
+ * uniforms from update_physics().
+ */
 #version 430 core
 layout (local_size_x = 256) in;
 
+/// GPU-side mirror of particle_t: 2D position and velocity.
 struct Particle {
     vec2 position;
     vec2 velocity;
@@ -24,6 +36,20 @@ uniform float   frictionFactor;
 uniform float   attractionRadius;
 uniform vec2    screenSize;
 
+/**
+ * forceFn
+ *
+ * @brief Force curve as a function of normalized distance and attraction weight.
+ *
+ * Below beta the force is a fixed short-range repulsion (independent of alpha),
+ * ramping from -2 up to 0 at r == beta. Between beta and 1 it is a triangular
+ * profile scaled by alpha, so the pair attracts (alpha > 0) or repels (alpha < 0).
+ * Beyond r == 1 the force is zero.
+ *
+ * @param r      Distance normalized by attractionRadius, expected in [0, 1].
+ * @param alpha  The inter-class attraction weight in [-1, 1].
+ * @return       The scalar force magnitude along the pair's direction vector.
+ */
 float forceFn(float r, float alpha) {
     float beta = 0.25;
     if (r < beta) 
@@ -55,11 +81,26 @@ void main() {
         if (delta.y < -screenSize.y / 2.0) delta.y += screenSize.y;
 
         float dist = length(delta);
-        if (dist == 0.0 || dist > attractionRadius) continue;
+        if (dist > attractionRadius) continue;  // outside interaction range
 
         float alpha = matrix[colorClass_i * maxClass + colorClass_j];
-        float f     = forceFn(dist / attractionRadius, alpha);
-        acceleration += normalize(delta) * f;
+
+        // Two distinct particles can land on the exact same point (dist == 0),
+        // where normalize() is undefined. Skipping the pair (the old behaviour)
+        // left coincident particles with no repulsion, so they stuck together
+        // into frozen clumps. Instead give them a deterministic escape axis and
+        // treat them as maximally close, so the near-field repulsion drives them
+        // apart. i and j pick opposite directions, so they always separate.
+        vec2 dir;
+        if (dist > 1e-4) {
+            dir = delta / dist;
+        } else {
+            dir  = vec2((i > j) ? 1.0 : -1.0, 0.0);
+            dist = 1e-4;
+        }
+
+        float f = forceFn(dist / attractionRadius, alpha);
+        acceleration += dir * f;
     }
 
     float friction = pow(0.5, deltaTime / frictionFactor);  // FRICTIONHALFLIFE
