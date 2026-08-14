@@ -14,6 +14,8 @@
 /// Build a rounded, solid-color button style (used for circular color swatches).
 struct nk_style_button circular_button(struct nk_context *context, struct nk_color color);
 
+struct nk_style_button rainbow_button(struct nk_context *context);
+
 /// Build a button style whose fill color encodes an attraction weight in [-1, 1].
 struct nk_style_button attraction_factor_button(struct nk_context *context, float *value);
 

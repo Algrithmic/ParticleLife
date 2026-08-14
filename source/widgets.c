@@ -8,6 +8,7 @@
  */
 #include <stdio.h>
 #include <stdint.h>
+#include <math.h>
 
 #include "widgets.h"
 
@@ -44,6 +45,66 @@ struct nk_style_button circular_button(struct nk_context *context, struct nk_col
     return button;
 }
 
+static struct nk_color hsv_to_rgb(float hue, float saturation, float value) {
+    float red        = 0.0f;
+    float green      = 0.0f;
+    float blue       = 0.0f;
+
+    float chroma = value * saturation;
+    float interpol = chroma * (1.0f - fabsf(fmodf(hue / 60.0f, 2.0f) - 1.0f));
+    float brightness = value - chroma;
+
+    if (hue < 60.0f) {
+        red = chroma; 
+        green = interpol; 
+        blue = 0;
+    }
+    else if (hue < 120.0f) {
+        red = interpol; 
+        green = chroma; 
+        blue = 0;
+    }
+    else if (hue < 180.0f) {
+        red = 0; 
+        green = chroma; 
+        blue = interpol;
+    }
+    else if (hue < 240.0f) {
+        red = 0; 
+        green = interpol; 
+        blue = chroma;
+    }
+    else if (hue < 300.0f) {
+        red = interpol; 
+        green = 0; 
+        blue = chroma;
+    }
+    else {
+        red = chroma; 
+        green = 0; 
+        blue = interpol;
+    }
+
+    hue += 0.1f;
+    if (hue >= 360.0f) hue = 0.0f;
+
+    return (struct nk_color) {
+        ( (red + brightness) * 255.0f),
+        ( (green + brightness) * 255.0f),
+        ( (blue + brightness) * 255.0f),
+        255
+    };
+}
+
+struct nk_style_button rainbow_button(struct nk_context *context) {
+    static float hue = 0.0f;
+    struct nk_color color = hsv_to_rgb(hue, 1.0f, 1.0f);
+
+    hue += 0.1f;
+    if (hue >= 360.0f) hue = 0.0f;
+
+    return circular_button(context, color);
+}
 
 /**
  * attraction_color

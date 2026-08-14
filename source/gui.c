@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
+#include <stdbool.h>
 
 #include "application.h"
 #include "gui.h"
@@ -185,7 +186,7 @@ static void update_world_section(application_t *application) {
 
     if (active_color_index >= 0) {
         if (nk_popup_begin(ctx, NK_POPUP_STATIC, "Edit Color",
-                            NK_WINDOW_CLOSABLE, nk_rect(DEFAULT_PANEL_WIDTH + 10, 50, 220, 260))) {
+                            NK_WINDOW_CLOSABLE, nk_rect(DEFAULT_PANEL_WIDTH + 10, 0, DEFAULT_PANEL_WIDTH, DEFAULT_PANEL_WIDTH))) {
             nk_layout_row_dynamic(ctx, 220, 1);
             nk_color_pick(ctx, (struct nk_colorf *) application->tunables.rgba_palette[active_color_index], NK_RGBA);
             nk_popup_end(ctx);
@@ -257,20 +258,26 @@ static void update_attraction_matrix_section(application_t *application) {
     static uint8_t active_cell = 0;
     static uint8_t active_row  = 1;
     static uint8_t active_col  = 1;
+    static bool universal      = true;
 
     for (uint8_t r = 0; r < dimensions; r++) {
         for (uint8_t c = 0; c < dimensions; c++) {
-            if (r == 0 && c == 0) continue; // empty top left corner
-
             nk_layout_space_push(ctx, nk_rect(x0 + c * step, r * step, MATRIX_CELL_SIZE, MATRIX_CELL_SIZE));
             
-            if (r > 0  && c > 0) { // attraction factor cell
+            if (r == 0 && c == 0) { // Representation for all particles
+                struct nk_style_button all_colors = rainbow_button(ctx);
+                if (nk_button_label_styled(ctx, &all_colors, EMPTY_STRING)) {
+                    universal = true;
+                }
+            }
+            else if (r > 0  && c > 0) { // attraction factor cell
                 uint8_t matrix_idx = (r - 1) * MAX_NUM_CLASSES + (c - 1);
                 struct nk_style_button factor = attraction_factor_button(ctx, &matrix[matrix_idx]);
                 if (nk_button_label_styled(ctx, &factor, EMPTY_STRING)) {
                     active_cell = matrix_idx;
                     active_row = r;
                     active_col = c;
+                    universal = false;
                 }
             }
             else { // header cell
@@ -288,23 +295,33 @@ static void update_attraction_matrix_section(application_t *application) {
     nk_layout_space_end(ctx);
 
     // Now for tuning of the cell value
+    struct nk_style_button active;
+    struct nk_style_button affected;
+
     uint8_t palette_idx0 = active_row - 1;
     uint8_t palette_idx1 = active_col - 1;
-    struct nk_style_button target = circular_button(ctx, (struct nk_color) {
-        .r = (nk_byte) (COLOR_RANGE * application->tunables.rgba_palette[palette_idx0][0]),
-        .g = (nk_byte) (COLOR_RANGE * application->tunables.rgba_palette[palette_idx0][1]),
-        .b = (nk_byte) (COLOR_RANGE * application->tunables.rgba_palette[palette_idx0][2]),
-        .a = (nk_byte) (COLOR_RANGE)
-    } );
-    struct nk_style_button affected = circular_button(ctx, (struct nk_color) {
-        .r = (nk_byte) (COLOR_RANGE * application->tunables.rgba_palette[palette_idx1][0]),
-        .g = (nk_byte) (COLOR_RANGE * application->tunables.rgba_palette[palette_idx1][1]),
-        .b = (nk_byte) (COLOR_RANGE * application->tunables.rgba_palette[palette_idx1][2]),
-        .a = (nk_byte) (COLOR_RANGE)
-    } );
+
+    if (universal) {
+        active   = rainbow_button(ctx);
+        affected = rainbow_button(ctx);
+    }
+    else {
+        active = circular_button(ctx, (struct nk_color) {
+            .r = (nk_byte) (COLOR_RANGE * application->tunables.rgba_palette[palette_idx0][0]),
+            .g = (nk_byte) (COLOR_RANGE * application->tunables.rgba_palette[palette_idx0][1]),
+            .b = (nk_byte) (COLOR_RANGE * application->tunables.rgba_palette[palette_idx0][2]),
+            .a = (nk_byte) (COLOR_RANGE)
+        } );
+        affected = circular_button(ctx, (struct nk_color) {
+            .r = (nk_byte) (COLOR_RANGE * application->tunables.rgba_palette[palette_idx1][0]),
+            .g = (nk_byte) (COLOR_RANGE * application->tunables.rgba_palette[palette_idx1][1]),
+            .b = (nk_byte) (COLOR_RANGE * application->tunables.rgba_palette[palette_idx1][2]),
+            .a = (nk_byte) (COLOR_RANGE)
+        } );
+    }
 
     nk_layout_row(ctx, NK_DYNAMIC, MATRIX_CELL_SIZE, 4, (float const []) {0.1f, 0.1f, 0.1f, 0.7f});
-    nk_button_label_styled(ctx, &target, EMPTY_STRING);
+    nk_button_label_styled(ctx, &active, EMPTY_STRING);
     
     struct nk_rect bounds;
     nk_widget(&bounds, ctx);
@@ -316,7 +333,17 @@ static void update_attraction_matrix_section(application_t *application) {
                    1.0f,
                    ctx->style.font);
     nk_button_label_styled(ctx, &affected, EMPTY_STRING);
-    if (nk_property_float(ctx, "attraction", -1.0f, &matrix[active_cell], 1.0f, 0.1f, 0.01f)) {
+
+    static float new_attraction_value = 0.0f;
+    if (!universal) 
+        new_attraction_value = matrix[active_cell];
+    if (nk_property_float(ctx, "attraction", -1.0f, &new_attraction_value, 1.0f, 0.1f, 0.01f)) {
+        if (universal) {
+            for (size_t i = 0; i < matrix_length; ++i) 
+                matrix[i] = new_attraction_value;
+        }
+        else matrix[active_cell] = new_attraction_value;
+
         application->tunables.dirty_matrix = true;
     }
 
