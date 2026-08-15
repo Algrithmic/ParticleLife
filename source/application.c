@@ -111,7 +111,8 @@ bool init_application(application_t *application) {
  * @param application  Pointer to the initialized application state.
  * @return             1 on success, 0 if shader initialization fails.
  *
- * @note Relies on the global `attraction` matrix being populated before call.
+ * @note Calls init_particles() first, which populates application->attraction
+ *       before it is uploaded to the GPU via init_buffers().
  * @see  init_application()
  */
 bool init_simulation(application_t *application) {
@@ -327,7 +328,6 @@ bool mainloop(application_t *application) {
         if (application->tunables.shuffle) {
             shuffle_particles(application);
             update_particle_ssbo(application, 0, application->tunables.particle_count);
-            update_attraction_ssbo(application);
             application->tunables.shuffle = false;
         }
 

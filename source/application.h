@@ -32,7 +32,7 @@ typedef struct application {
     int32_t height;             ///< Current window height in pixels.
     int32_t width;              ///< Current window width in pixels.
     shader_t shader_data;       ///< Graphics/compute programs and vertex buffers.
-    particle_t *particles;      ///< Heap-allocated array of NUM_PARTICLES particles.
+    particle_t *particles;      ///< Heap-allocated array of MAX_PARTICLES particles.
     partparams_t tunables;      ///< Tunable particle parameters
     attraction_t attraction;    ///< Inter-class attraction matrix.
     enum state state;           ///< Current lifecycle state.

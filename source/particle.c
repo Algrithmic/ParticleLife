@@ -187,10 +187,6 @@ void shuffle_particles(application_t *application) {
             (vector2D_t) { .x = 0.0f, .y = 0.0f }
         );
     }
-
-    // Fill attraction matrix | matrix[i] belongs to [-1.0f, 1.0f]
-    for (uint32_t i = 0; i < application->attraction.length; i++)
-        application->attraction.matrix[i] = SDL_randf() * 2.0f - 1.0f;
 }
 
 /**

@@ -17,8 +17,8 @@
 
 #include "application.h"
 #include "gui.h"
-#include "presets.h"
 #include "widgets.h"
+#include "particle.h"
 
 /**
  * init_gui
@@ -71,7 +71,6 @@ bool destroy_gui(void) {
 }
 
 
-#define DEFAULT_PANEL_WIDTH     325
 #define PANEL_CONTENT_RIGHT_PADDING 20
 #define DEFAULT_WIDGET_HEIGHT   35
 #define MAX_NUM_COUNT           8
@@ -111,11 +110,10 @@ static void update_state_section(application_t *application) {
     if (nk_button_label(ctx, "Shuffle")) application->tunables.shuffle = true;
 }
 
-#define COLOR_RANGE 255.0f
-
-#define SLIDER_PADDING  20
+#define SLIDER_PADDING  10
 #define SLIDER_WIDTH    ( DEFAULT_PANEL_WIDTH - (3 * SLIDER_PADDING ) )
 #define SLIDER_HEIGHT   DEFAULT_WIDGET_HEIGHT
+
 
 // Which particle color is currently being edited
 static int active_color_index = -1;
@@ -125,10 +123,11 @@ static int active_color_index = -1;
  *
  * @brief Builds the "Particle Settings" tree: count, class count, and colors.
  *
- * Emits the particle-count slider (raising dirty_count when changed), the class
- * count slider, a row of per-class color swatches that open a color-picker popup,
- * and a color-preset combobox plus a randomize button. Edits write directly into
- * the tunable palette and counts.
+ * Emits the particle-count and class-count slider+textbox combos (see
+ * uint_variable_slider()), raising dirty_count when either changes, a row of
+ * per-class color swatches that open an extended color-picker popup, and a
+ * color-preset combobox plus a randomize button. Edits write directly into the
+ * tunable palette and counts.
  *
  * @param application  Pointer to the running application state.
  *
@@ -138,46 +137,32 @@ static int active_color_index = -1;
 static void update_world_section(application_t *application) {
     struct nk_context *ctx = application->gui_context;
     uint32_t * const nclasses = &application->tunables.nclass;
-    uint32_t * const particle_count = &application->tunables.particle_count;
     uint32_t * const new_count = &application->tunables.new_count;
+    float (*palette)[NUM_CHANNELS] = application->tunables.rgba_palette;
 
     // Particle Settings Section
     if (!nk_tree_push(ctx, NK_TREE_TAB, "PARTICLE SETTINGS", NK_MAXIMIZED))
         return;
     
     // Particle Count Label
-    nk_layout_row_static(ctx, 20, DEFAULT_PANEL_WIDTH / 2 - PANEL_CONTENT_RIGHT_PADDING, 2);
-    nk_label(ctx, "Particle Count", NK_TEXT_ALIGN_LEFT | NK_TEXT_ALIGN_BOTTOM);
-
-    // Particle Count Slider
-    nk_labelf(ctx, NK_TEXT_ALIGN_RIGHT | NK_TEXT_ALIGN_BOTTOM, "%d", *particle_count);
-    nk_layout_space_begin(ctx, NK_STATIC, DEFAULT_WIDGET_HEIGHT, 1);
-    nk_layout_space_push(ctx, nk_rect(SLIDER_PADDING, 0, SLIDER_WIDTH, SLIDER_HEIGHT));
-    if (nk_slider_int(ctx, 0, (int *) new_count, MAX_PARTICLES, 1)) 
+    static char count_slider_text[TEXT_MAX_SIZE] = { '\0' };
+    if (uint_variable_slider(ctx, "Count", 0, new_count, MAX_PARTICLES, count_slider_text))
         application->tunables.dirty_count = true;
-    nk_layout_space_end(ctx);
 
-    // Particle Types Label
-    nk_layout_row_static(ctx, 20, DEFAULT_PANEL_WIDTH / 2 - PANEL_CONTENT_RIGHT_PADDING, 2);
-    nk_label(ctx, "Particle Types", NK_TEXT_ALIGN_LEFT | NK_TEXT_ALIGN_BOTTOM);
-
-    // Particle Types Slider
-    nk_labelf(ctx, NK_TEXT_ALIGN_RIGHT | NK_TEXT_ALIGN_BOTTOM, "%d", *nclasses);
-    nk_layout_space_begin(ctx, NK_STATIC, DEFAULT_WIDGET_HEIGHT, 1);
-    nk_layout_space_push(ctx, nk_rect(SLIDER_PADDING, 0, SLIDER_WIDTH, SLIDER_HEIGHT));
-    nk_slider_int(ctx, 1, (int *) nclasses, 8, 1);
-    nk_layout_space_end(ctx);
+    static char types_slider_text[TEXT_MAX_SIZE] = { '\0' };
+    if (uint_variable_slider(ctx, "Types", 1, nclasses, MAX_NUM_CLASSES, types_slider_text))
+        application->tunables.dirty_count = true;
 
     // Particle Colors Label
     nk_layout_row_static(ctx, 15, DEFAULT_PANEL_WIDTH / 2 - PANEL_CONTENT_RIGHT_PADDING, 2);
-    nk_label(ctx, "Particle Colors", NK_TEXT_ALIGN_LEFT | NK_TEXT_ALIGN_BOTTOM);
+    nk_label(ctx, "Colors", NK_TEXT_ALIGN_LEFT | NK_TEXT_ALIGN_BOTTOM);
     // For each color type, display a circle with each corresponding color
     nk_layout_row_dynamic(ctx, DEFAULT_WIDGET_HEIGHT, *nclasses);
     for (size_t i = 0; i < *nclasses; i++) {
         if (nk_button_color(ctx, (struct nk_color) {
-            .r = (nk_byte) (COLOR_RANGE * application->tunables.rgba_palette[i][0]),
-            .g = (nk_byte) (COLOR_RANGE * application->tunables.rgba_palette[i][1]),
-            .b = (nk_byte) (COLOR_RANGE * application->tunables.rgba_palette[i][2]),
+            .r = (nk_byte) (COLOR_RANGE * palette[i][0]),
+            .g = (nk_byte) (COLOR_RANGE * palette[i][1]),
+            .b = (nk_byte) (COLOR_RANGE * palette[i][2]),
             .a = (nk_byte) (COLOR_RANGE)
         } )) {
             active_color_index = (int) i;
@@ -186,9 +171,8 @@ static void update_world_section(application_t *application) {
 
     if (active_color_index >= 0) {
         if (nk_popup_begin(ctx, NK_POPUP_STATIC, "Edit Color",
-                            NK_WINDOW_CLOSABLE, nk_rect(DEFAULT_PANEL_WIDTH + 10, 0, DEFAULT_PANEL_WIDTH, DEFAULT_PANEL_WIDTH))) {
-            nk_layout_row_dynamic(ctx, 220, 1);
-            nk_color_pick(ctx, (struct nk_colorf *) application->tunables.rgba_palette[active_color_index], NK_RGBA);
+                            NK_WINDOW_CLOSABLE, nk_rect(DEFAULT_PANEL_WIDTH, 0, DEFAULT_PANEL_WIDTH, DEFAULT_PANEL_WIDTH + DEFAULT_WIDGET_HEIGHT * 2))) {
+            extended_color_picker(ctx, palette[active_color_index]);
             nk_popup_end(ctx);
         } 
         else active_color_index = -1;
@@ -201,16 +185,16 @@ static void update_world_section(application_t *application) {
         nk_layout_row_dynamic(ctx, 25, 1);
         for (uint8_t i = 0; i < COLOR_PRESET_COUNT; i++) {
             if (nk_combo_item_label(ctx, color_preset_names[i], NK_TEXT_LEFT)) {
-                memcpy(application->tunables.rgba_palette, color_presets[i], sizeof(application->tunables.rgba_palette));
+                memcpy(palette, color_presets[i], (MAX_NUM_CLASSES * NUM_CHANNELS) * sizeof(float));
             }
         }
         nk_combo_end(ctx);
     }
     if (nk_button_label(ctx, "Randomize")) {
         for (size_t i = 0; i < *nclasses; i++) {
-            application->tunables.rgba_palette[i][0] = SDL_randf();
-            application->tunables.rgba_palette[i][1] = SDL_randf();
-            application->tunables.rgba_palette[i][2] = SDL_randf();
+            palette[i][0] = SDL_randf();
+            palette[i][1] = SDL_randf();
+            palette[i][2] = SDL_randf();
         }
     }
 
@@ -226,145 +210,64 @@ static void update_world_section(application_t *application) {
  * @brief Builds the "Attraction Matrix" tree: the interactive nclass x nclass grid.
  *
  * Lays out a centered grid of colored class headers and attraction-factor cells,
- * where each cell's color encodes its weight (red = repel, blue = attract). Clicking
- * a cell selects it; a property widget below then edits the selected weight, and a
- * preset combobox and randomize button rewrite the whole matrix. Any change raises
- * dirty_matrix so the GPU buffer is refreshed.
+ * where each cell's color encodes its weight (red = repel, blue = attract).
+ * Clicking a cell selects just that cell; Ctrl-clicking adds cells to the
+ * selection so several can be edited together; clicking the corner button
+ * selects the whole matrix. A slider+textbox combo below (see cell_editor())
+ * then edits the weight for every cell the current selection covers, and a
+ * preset combobox and randomize button rewrite the whole matrix regardless of
+ * selection. Any change raises dirty_matrix so the GPU buffer is refreshed.
  *
  * @param application  Pointer to the running application state.
  *
  * @note This is a static internal helper and should only be called from update_gui().
- *       The selected cell/row/col persist across frames in function-local statics.
+ *       The selection persists across frames in a function-local static.
  */
 static void update_attraction_matrix_section(application_t *application) {
     struct nk_context *ctx   = application->gui_context;
     uint8_t const nclasses   = application->tunables.nclass;
     uint8_t const dimensions = nclasses + 1; // +1 for column and row headers
-    float *matrix = application->attraction.matrix;
-    uint32_t matrix_length = application->attraction.length;
+    attraction_t *attraction = &application->attraction;
+    float (*palette)[NUM_CHANNELS] = application->tunables.rgba_palette;
     
     // Attraction Matrix Section
     if (!nk_tree_push(ctx, NK_TREE_TAB, "ATTRACTION MATRIX", NK_MINIMIZED))
         return;
 
-    // Attraction Matrix Grid Positioning Constants
-    float const step = MATRIX_CELL_SIZE + MATRIX_CELL_PADDING;
-    float const span = dimensions * MATRIX_CELL_SIZE + (dimensions - 1) * MATRIX_CELL_PADDING;
-    float const available = nk_window_get_content_region_size(ctx).x;
-    float       x0 = (available - span) * 0.5f;
-    if (x0 < 0.0f) x0 = 0.0f;   // if panel is too narrow, pin content left
-    
-    nk_layout_space_begin(ctx, NK_STATIC, span, dimensions * dimensions);
-    static uint8_t active_cell = 0;
-    static uint8_t active_row  = 1;
-    static uint8_t active_col  = 1;
-    static bool universal      = true;
+    static active_cell_t cell_data = {
+        .selection = { false },
+        .rowidx    = 1,
+        .colidx    = 1,
+        .universal = true
+    };
 
-    for (uint8_t r = 0; r < dimensions; r++) {
-        for (uint8_t c = 0; c < dimensions; c++) {
-            nk_layout_space_push(ctx, nk_rect(x0 + c * step, r * step, MATRIX_CELL_SIZE, MATRIX_CELL_SIZE));
-            
-            if (r == 0 && c == 0) { // Representation for all particles
-                struct nk_style_button all_colors = rainbow_button(ctx);
-                if (nk_button_label_styled(ctx, &all_colors, EMPTY_STRING)) {
-                    universal = true;
-                }
-            }
-            else if (r > 0  && c > 0) { // attraction factor cell
-                uint8_t matrix_idx = (r - 1) * MAX_NUM_CLASSES + (c - 1);
-                struct nk_style_button factor = attraction_factor_button(ctx, &matrix[matrix_idx]);
-                if (nk_button_label_styled(ctx, &factor, EMPTY_STRING)) {
-                    active_cell = matrix_idx;
-                    active_row = r;
-                    active_col = c;
-                    universal = false;
-                }
-            }
-            else { // header cell
-                uint8_t palette_idx = (r == 0) ? (c - 1) : (r - 1); // determine the header for row and col
-                struct nk_style_button header = circular_button(ctx, (struct nk_color) {
-                    .r = (nk_byte) (COLOR_RANGE * application->tunables.rgba_palette[palette_idx][0]),
-                    .g = (nk_byte) (COLOR_RANGE * application->tunables.rgba_palette[palette_idx][1]),
-                    .b = (nk_byte) (COLOR_RANGE * application->tunables.rgba_palette[palette_idx][2]),
-                    .a = (nk_byte) (COLOR_RANGE)
-                } );
-                nk_button_label_styled(ctx, &header, EMPTY_STRING);
-            }
-        }
-    }
-    nk_layout_space_end(ctx);
+    create_grid(ctx, attraction->matrix, palette, dimensions, &cell_data);
 
     // Now for tuning of the cell value
     struct nk_style_button active;
     struct nk_style_button affected;
 
-    uint8_t palette_idx0 = active_row - 1;
-    uint8_t palette_idx1 = active_col - 1;
-
-    if (universal) {
-        active   = rainbow_button(ctx);
-        affected = rainbow_button(ctx);
+    if (cell_data.universal) {
+        active   = rainbow_button(ctx, true);
+        affected = rainbow_button(ctx, true);
     }
     else {
         active = circular_button(ctx, (struct nk_color) {
-            .r = (nk_byte) (COLOR_RANGE * application->tunables.rgba_palette[palette_idx0][0]),
-            .g = (nk_byte) (COLOR_RANGE * application->tunables.rgba_palette[palette_idx0][1]),
-            .b = (nk_byte) (COLOR_RANGE * application->tunables.rgba_palette[palette_idx0][2]),
-            .a = (nk_byte) (COLOR_RANGE)
-        } );
+            .r = (nk_byte) (COLOR_RANGE * palette[cell_data.rowidx - 1][0]),
+            .g = (nk_byte) (COLOR_RANGE * palette[cell_data.rowidx - 1][1]),
+            .b = (nk_byte) (COLOR_RANGE * palette[cell_data.rowidx - 1][2]),
+            .a = (nk_byte) (COLOR_RANGE) } );
         affected = circular_button(ctx, (struct nk_color) {
-            .r = (nk_byte) (COLOR_RANGE * application->tunables.rgba_palette[palette_idx1][0]),
-            .g = (nk_byte) (COLOR_RANGE * application->tunables.rgba_palette[palette_idx1][1]),
-            .b = (nk_byte) (COLOR_RANGE * application->tunables.rgba_palette[palette_idx1][2]),
-            .a = (nk_byte) (COLOR_RANGE)
-        } );
+            .r = (nk_byte) (COLOR_RANGE * palette[cell_data.colidx - 1][0]),
+            .g = (nk_byte) (COLOR_RANGE * palette[cell_data.colidx - 1][1]),
+            .b = (nk_byte) (COLOR_RANGE * palette[cell_data.colidx - 1][2]),
+            .a = (nk_byte) (COLOR_RANGE) } );
     }
 
-    nk_layout_row(ctx, NK_DYNAMIC, MATRIX_CELL_SIZE, 4, (float const []) {0.1f, 0.1f, 0.1f, 0.7f});
-    nk_button_label_styled(ctx, &active, EMPTY_STRING);
-    
-    struct nk_rect bounds;
-    nk_widget(&bounds, ctx);
-    nk_draw_symbol(nk_window_get_canvas(ctx),
-                   NK_SYMBOL_TRIANGLE_RIGHT,
-                   nk_shrink_rect(bounds, 8.0f),
-                   nk_rgba(0, 0, 0, 0),
-                   ctx->style.text.color,
-                   1.0f,
-                   ctx->style.font);
-    nk_button_label_styled(ctx, &affected, EMPTY_STRING);
-
-    static float new_attraction_value = 0.0f;
-    if (!universal) 
-        new_attraction_value = matrix[active_cell];
-    if (nk_property_float(ctx, "attraction", -1.0f, &new_attraction_value, 1.0f, 0.1f, 0.01f)) {
-        if (universal) {
-            for (size_t i = 0; i < matrix_length; ++i) 
-                matrix[i] = new_attraction_value;
-        }
-        else matrix[active_cell] = new_attraction_value;
-
+    if (cell_editor(ctx, attraction, cell_data, active, affected)) {
         application->tunables.dirty_matrix = true;
     }
-
-    // attraction presets
-    // combobox and randomize button
-    nk_layout_row(ctx, NK_DYNAMIC, 25, 2, (float const []) { 0.7f, 0.3f });
-    if (nk_combo_begin_label(ctx, "Attraction Presets",
-                              nk_vec2(DEFAULT_PANEL_WIDTH - PANEL_CONTENT_RIGHT_PADDING, 200))) {
-        nk_layout_row_dynamic(ctx, 25, 1);
-        for (uint8_t i = 0; i < MATRIX_PRESET_COUNT; i++) {
-            if (nk_combo_item_label(ctx, matrix_preset_names[i], NK_TEXT_LEFT)) {
-                memcpy(matrix, matrix_presets[i], sizeof(float) * matrix_length);
-                application->tunables.dirty_matrix = true;
-            }
-        }
-        nk_combo_end(ctx);
-    }
-    if (nk_button_label(ctx, "Randomize")) {
-        for (size_t i = 0; i < matrix_length; i++) {
-            matrix[i] = SDL_randf() * 2.0f - 1.0f;
-        }
+    if (grid_preset_randomize(ctx, attraction)) {
         application->tunables.dirty_matrix = true;
     }
 
@@ -395,37 +298,16 @@ static void update_physics_section(application_t *application) {
         return;
 
     // Friction Half Life
-    nk_layout_row_static(ctx, 20, DEFAULT_PANEL_WIDTH / 2 - PANEL_CONTENT_RIGHT_PADDING, 2);
-    nk_label(ctx, "Friction", NK_TEXT_ALIGN_LEFT | NK_TEXT_ALIGN_BOTTOM);
-
-    // Friction Half-Life Slider
-    nk_labelf(ctx, NK_TEXT_ALIGN_RIGHT | NK_TEXT_ALIGN_BOTTOM, "%g", *friction);
-    nk_layout_space_begin(ctx, NK_STATIC, DEFAULT_WIDGET_HEIGHT, 1);
-    nk_layout_space_push(ctx, nk_rect(SLIDER_PADDING, 0, SLIDER_WIDTH, SLIDER_HEIGHT));
-    nk_slider_float(ctx, 0.0f, friction, 3.0f, 0.25f);
-    nk_layout_space_end(ctx);
+    static char friction_slider_text[TEXT_MAX_SIZE] = { '\0' };
+    float_variable_slider(ctx, "Friction", 0.0f, friction, 3.0f, 0.25f, friction_slider_text);
     
-    // Delta Time Label
-    nk_layout_row_static(ctx, 20, DEFAULT_PANEL_WIDTH / 2 - PANEL_CONTENT_RIGHT_PADDING, 2);
-    nk_label(ctx, "Delta Time", NK_TEXT_ALIGN_LEFT | NK_TEXT_ALIGN_BOTTOM);
+    // Delta Time
+    static char dt_slider_text[TEXT_MAX_SIZE] = { '\0' };
+    float_variable_slider(ctx, "Delta Time", 0.025f, deltatime, 1.0f, 0.025f, dt_slider_text);
 
-    // Delta Time Slider
-    nk_labelf(ctx, NK_TEXT_ALIGN_RIGHT | NK_TEXT_ALIGN_BOTTOM, "%g", *deltatime);
-    nk_layout_space_begin(ctx, NK_STATIC, DEFAULT_WIDGET_HEIGHT, 1);
-    nk_layout_space_push(ctx, nk_rect(SLIDER_PADDING, 0, SLIDER_WIDTH, SLIDER_HEIGHT));
-    nk_slider_float(ctx, 0.025f, deltatime, 1.0f, 0.025f);
-    nk_layout_space_end(ctx);
-
-    // Attraction Radius Label
-    nk_layout_row_static(ctx, 20, DEFAULT_PANEL_WIDTH / 2 - PANEL_CONTENT_RIGHT_PADDING, 2);
-    nk_label(ctx, "Attraction Radius", NK_TEXT_ALIGN_LEFT | NK_TEXT_ALIGN_BOTTOM);
-
-    // Attraction Radius Slider
-    nk_labelf(ctx, NK_TEXT_ALIGN_RIGHT | NK_TEXT_ALIGN_BOTTOM, "%g", *aradius);
-    nk_layout_space_begin(ctx, NK_STATIC, DEFAULT_WIDGET_HEIGHT, 1);
-    nk_layout_space_push(ctx, nk_rect(SLIDER_PADDING, 0, SLIDER_WIDTH, SLIDER_HEIGHT));
-    nk_slider_float(ctx, 0.0f, aradius, 200.0f, 5.0f);
-    nk_layout_space_end(ctx);
+    // Attraction Radius
+    static char ar_slider_text[TEXT_MAX_SIZE] = { '\0' };
+    float_variable_slider(ctx, "Max Radius", 0.0f, aradius, 200.0f, 5.0f, ar_slider_text);
 
     nk_tree_pop(ctx);
 }
