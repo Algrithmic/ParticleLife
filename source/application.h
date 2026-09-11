@@ -8,6 +8,8 @@
 #ifndef APPLICATION_H
 #define APPLICATION_H
 
+#include "SDL.h"
+
 #include "particle.h"
 #include "shaders.h"
 #include "gui.h"
@@ -19,23 +21,43 @@ typedef struct SDL_GLContextState *SDL_GLContext;
 
 /// Lifecycle state of the application.
 enum state {
-    UNINITIALIZED = 0,  ///< Not yet initialized, or torn down / quitting.
+    UNINITIALIZED,      ///< Not yet initialized, or torn down / quitting.
     RUNNING,            ///< Actively simulating and rendering.
     PAUSED,             ///< Alive but simulation paused
 };
 
+typedef struct screen {
+    SDL_Window *window;
+    int32_t     height;
+    int32_t     width;
+} screen_t;
+
+/// Pan/zoom view into world space; maps world units to window pixels.
+typedef struct camera {
+    float x;        ///< World-space X coordinate shown at the window's left edge.
+    float y;        ///< World-space Y coordinate shown at the window's top edge.
+    float zoom;      ///< Scale factor from world units to pixels (1.0 = 1:1).
+} camera_t;
+
+typedef struct contexts {
+    screen_t      screen;
+    camera_t      camera;
+    SDL_GLContext gl;
+    nk_context_t *gui;
+} contexts_t;
+
+typedef struct world {
+    particle_t  *particles;     ///< Heap-allocated array of MAX_PARTICLES particles.
+    settings_t   settings;      ///< Tunable particle parameters
+    attraction_t attraction;    ///< Inter-class attraction matrix.
+} world_t;
+
 /// Central application state shared across subsystems.
 typedef struct application {
-    SDL_Window *window;         ///< SDL window owning the OpenGL surface.
-    SDL_GLContext gl_context;   ///< OpenGL rendering context.
-    nk_context_t *gui_context;  ///< Nuklear GUI context.
-    int32_t height;             ///< Current window height in pixels.
-    int32_t width;              ///< Current window width in pixels.
-    shader_t shader_data;       ///< Graphics/compute programs and vertex buffers.
-    particle_t *particles;      ///< Heap-allocated array of MAX_PARTICLES particles.
-    partparams_t tunables;      ///< Tunable particle parameters
-    attraction_t attraction;    ///< Inter-class attraction matrix.
-    enum state state;           ///< Current lifecycle state.
+    contexts_t   contexts;
+    shader_t     shaders;       ///< Graphics/compute programs and vertex buffers.
+    world_t      world;
+    enum state   state;         ///< Current lifecycle state.
 } application_t;
 
 // init_application : initializes the resources for the application

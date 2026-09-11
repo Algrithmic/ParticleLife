@@ -25,7 +25,8 @@
 #include "nuklear_sdl3_gl3.h"
 
 typedef struct application application_t;
-
+typedef struct contexts contexts_t;
+typedef struct nk_context nk_context_t;
 
 // init_gui : creates the Nuklear context and bakes the default font
 bool init_gui(application_t *application);

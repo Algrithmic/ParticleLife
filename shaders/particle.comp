@@ -32,9 +32,10 @@ uniform uint    maxClass;
 uniform uint    nClass;
 uniform uint    count;
 uniform float   deltaTime;
-uniform float   frictionFactor;
+uniform float   frictionRate;
 uniform float   attractionRadius;
-uniform vec2    screenSize;
+uniform vec2    worldSize;
+uniform bool    infinite;
 
 /**
  * forceFn
@@ -74,27 +75,24 @@ void main() {
         uint colorClass_j = j % nClass;
         vec2 delta = particles[j].position - position_i;
 
-        // wrap delta across screen edges
-        if (delta.x >  screenSize.x / 2.0) delta.x -= screenSize.x;
-        if (delta.x < -screenSize.x / 2.0) delta.x += screenSize.x;
-        if (delta.y >  screenSize.y / 2.0) delta.y -= screenSize.y;
-        if (delta.y < -screenSize.y / 2.0) delta.y += screenSize.y;
+        // wrap delta across world edges (toroidal mode only)
+        if (!infinite) {
+            if (delta.x >  worldSize.x / 2.0) delta.x -= worldSize.x;
+            if (delta.x < -worldSize.x / 2.0) delta.x += worldSize.x;
+            if (delta.y >  worldSize.y / 2.0) delta.y -= worldSize.y;
+            if (delta.y < -worldSize.y / 2.0) delta.y += worldSize.y;
+        }
 
         float dist = length(delta);
         if (dist > attractionRadius) continue;  // outside interaction range
 
         float alpha = matrix[colorClass_i * maxClass + colorClass_j];
 
-        // Two distinct particles can land on the exact same point (dist == 0),
-        // where normalize() is undefined. Skipping the pair (the old behaviour)
-        // left coincident particles with no repulsion, so they stuck together
-        // into frozen clumps. Instead give them a deterministic escape axis and
-        // treat them as maximally close, so the near-field repulsion drives them
-        // apart. i and j pick opposite directions, so they always separate.
         vec2 dir;
         if (dist > 1e-4) {
             dir = delta / dist;
-        } else {
+        } 
+        else {
             dir  = vec2((i > j) ? 1.0 : -1.0, 0.0);
             dist = 1e-4;
         }
@@ -103,11 +101,13 @@ void main() {
         acceleration += dir * f;
     }
 
-    float friction = pow(0.5, deltaTime / frictionFactor);  // FRICTIONHALFLIFE
+    // frictionRate is a decay rate (1/seconds): 0 = no damping, higher = more damping.
+    float friction = pow(0.5, deltaTime * frictionRate);
 
     particles[i].velocity = particles[i].velocity * friction + acceleration * deltaTime;
 
-    // update position and wrap
+    // update position and wrap (toroidal mode only)
     particles[i].position += particles[i].velocity * deltaTime;
-    particles[i].position = mod(particles[i].position + screenSize, screenSize);
+    if (!infinite)
+        particles[i].position = mod(particles[i].position + worldSize, worldSize);
 }

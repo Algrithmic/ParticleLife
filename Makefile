@@ -8,7 +8,18 @@ BUILD_DIR := ./build
 CC := gcc
 CFLAGS := -Wall -Wextra -Ivendor/SDL3/include -Ivendor/GLAD/include -Ivendor/Nuklear/include
 LDFLAGS := -lm -lcglm -lSDL3 -Lvendor/SDL3/libraries
-RPATH := -Wl,-rpath,'$$ORIGIN/../vendor/SDL3/libraries'
+
+# Platform detection: MSYS2/MinGW sets OS=Windows_NT, matching native Windows builds
+ifeq ($(OS),Windows_NT)
+	EXE_EXT := .exe
+	# SDL3.dll must sit next to the exe (or be on PATH) since Windows has no rpath
+	POST_BUILD := cp -u $(VENDOR_DIR)/SDL3/libraries/SDL3.dll $(BUILD_DIR)/
+else
+	RPATH := -Wl,-rpath,'$$ORIGIN/../vendor/SDL3/libraries'
+	POST_BUILD := true
+endif
+
+TARGET := $(BUILD_DIR)/$(PROGNAME)$(EXE_EXT)
 
 # Create all corresponding .o files from .c filenames
 SOURCES := $(wildcard $(SOURCE_DIR)/*.c)
@@ -27,11 +38,12 @@ RM := rm -rf
 
 .PHONY: all clean rebuild docs clean-docs
 
-all: $(BUILD_DIR)/$(PROGNAME)
+all: $(TARGET)
 
 # link all the object files in the final program exe
-$(BUILD_DIR)/$(PROGNAME): $(OBJECTS) $(GLAD_OBJ)
+$(TARGET): $(OBJECTS) $(GLAD_OBJ)
 	$(CC) $^ -o $@ $(LDFLAGS) $(RPATH)
+	@$(POST_BUILD)
 
 # Compile each .c file into .o file
 $(BUILD_DIR)/%.o: $(SOURCE_DIR)/%.c | $(BUILD_DIR)

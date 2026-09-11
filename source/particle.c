@@ -39,34 +39,40 @@ static particle_t new_particle(vector2D_t position, vector2D_t velocity) {
 }
 
 /**
- * init_tunables
+ * init_settings
  *
  * @brief Populates the tunable simulation parameters with their starting values.
  *
- * Seeds the particle count, class count, and physics tunables (attraction radius,
- * friction half-life, delta time) from the requested values and the compile-time
- * defaults, clears the dirty/shuffle flags, and loads the default RAINBOW color
- * palette.
+ * Seeds the particle count, class count, physics tunables (attraction radius,
+ * friction decay rate, speed multiplier), and the default toroidal world size
+ * and boundary mode from the requested values and the compile-time defaults,
+ * clears the dirty/shuffle flags, and loads the default RAINBOW color palette.
  *
- * @param application  Pointer to the application whose tunables are initialized.
+ * @param world        Pointer to the world whose tunables are initialized.
  * @param n            Initial particle count.
  * @param num_classes  Initial number of particle classes.
  * @return             1 on success.
  *
  * @note This is a static internal helper and should only be called from init_particles().
  */
-static bool init_tunables(application_t *application, uint32_t n, uint8_t num_classes) {
-    application->tunables.particle_count = n;
-    application->tunables.new_count  = n;
-    application->tunables.nclass     = num_classes;
-    application->tunables.attraction_radius = ATTRACTION_RADIUS;
-    application->tunables.friction_halflife = FRICTION_HALFLIFE;
-    application->tunables.delta_time = DELTATIME;
-    application->tunables.dirty_matrix = false;
-    application->tunables.dirty_count  = false;
-    application->tunables.shuffle = false;
+static bool init_settings(world_t *world, uint32_t n, uint8_t num_classes) {
+    world->settings.particle_count = n;
+    world->settings.new_count  = n;
+    world->settings.nclass     = num_classes;
+    world->settings.attraction_radius = ATTRACTION_RADIUS;
+    world->settings.friction = FRICTION;
+    world->settings.delta_time = DELTATIME;
+    world->settings.world_width  = DEFAULT_WORLD_WIDTH;
+    world->settings.world_height = DEFAULT_WORLD_HEIGHT;
+    world->settings.new_world_width  = DEFAULT_WORLD_WIDTH;
+    world->settings.new_world_height = DEFAULT_WORLD_HEIGHT;
+    world->settings.boundary_mode = BOUNDARY_INFINITE;
+    world->settings.dirty_matrix = false;
+    world->settings.dirty_count  = false;
+    world->settings.dirty_world  = false;
+    world->settings.shuffle = false;
 
-    memcpy(application->tunables.rgba_palette, color_presets[RAINBOW], sizeof(color_presets[RAINBOW]));
+    memcpy(world->settings.palette, color_presets[RAINBOW], sizeof(color_presets[RAINBOW]));
 
     return true;
 }
@@ -76,55 +82,60 @@ static bool init_tunables(application_t *application, uint32_t n, uint8_t num_cl
  *
  * @brief Allocates and initializes an array of n particles and the attraction matrix.
  *
- * Spawns each particle at a random position within the application window with
- * zero initial velocity. The particle array is allocated at MAX_PARTICLES so it
- * never has to be reallocated when the count grows at runtime. Also allocates the
- * application's attraction matrix and fills it with random weights in [-1, 1], and
- * seeds the tunable parameters via init_tunables().
+ * Seeds the tunable settings first (init_settings(), which sets world_width/
+ * world_height to their compile-time defaults), then spawns each particle at a
+ * random position within those world bounds with zero initial velocity. The
+ * particle array is allocated at MAX_PARTICLES so it never has to be
+ * reallocated when the count grows at runtime. Also allocates the world's
+ * attraction matrix and fills it with random weights in [-1, 1].
  *
- * @param application  Pointer to the initialized application, used for window dimensions.
+ * @param world        Pointer to the world to initialize.
  * @param n            Number of particles to create.
  * @param num_classes  Number of particle classes (must not exceed MAX_NUM_CLASSES).
  * @returns 1 on success and 0 on failure
  *
  * @note A particle's class is not stored; it is derived at runtime from its index.
- * @see  destroy_particles(), init_tunables()
+ * @note The spawn loop must run after init_settings(), since it reads
+ *       world->settings.world_width/world_height for the spawn bounds.
+ * @see  destroy_particles(), init_settings()
  */
-bool init_particles(application_t *application, uint32_t n, uint8_t num_classes) {
+bool init_particles(world_t *world, uint32_t n, uint8_t num_classes) {
     if (num_classes > MAX_NUM_CLASSES) {
         printf("particle.c : number of classes not supported\n");
         return false;
     }
 
     // initialize particles array at max size
-    application->particles = (particle_t *) malloc(MAX_PARTICLES * sizeof(particle_t));
-    if (application->particles == NULL) {
+    world->particles = (particle_t *) malloc(MAX_PARTICLES * sizeof(particle_t));
+    if (world->particles == NULL) {
         printf("particle.c: Unable to allocate memory for particles");
         return false;
     }
-    
+
+    // Seed the tunables (including world_width/world_height) before spawning,
+    // since spawn positions are drawn from the world bounds.
+    (void) init_settings(world, n, num_classes);
+
     // Fill particle array
     for (uint32_t i = 0; i < n; i++) {
-        application->particles[i] = new_particle(
-            (vector2D_t) { .x = SDL_rand(application->width), .y = SDL_rand(application->height) },
+        world->particles[i] = new_particle(
+            (vector2D_t) { .x = SDL_rand((int) world->settings.world_width), .y = SDL_rand((int) world->settings.world_height) },
             (vector2D_t) { .x = 0.0f, .y = 0.0f }
         );
     }
 
     // initializes the particle attraction matrix with random values [-1, 1]
-    application->attraction.length = MAX_NUM_CLASSES * MAX_NUM_CLASSES;
-    application->attraction.matrix = (float *) malloc((MAX_NUM_CLASSES * MAX_NUM_CLASSES) * sizeof(float));
-    if (application->attraction.matrix == NULL) {
+    world->attraction.length = MAX_NUM_CLASSES * MAX_NUM_CLASSES;
+    world->attraction.matrix = (float *) malloc((MAX_NUM_CLASSES * MAX_NUM_CLASSES) * sizeof(float));
+    if (world->attraction.matrix == NULL) {
         printf("particle.c: Unable to allocate memory for attraction matrix");
-        free(application->particles);
+        free(world->particles);
         return false;
     }
-    
-    // Fill attraction matrix | matrix[i] belongs to [-1.0f, 1.0f]
-    for (uint32_t i = 0; i < application->attraction.length; i++)
-        application->attraction.matrix[i] = SDL_randf() * 2.0f - 1.0f;
 
-    (void) init_tunables(application, n, num_classes);
+    // Fill attraction matrix | matrix[i] belongs to [-1.0f, 1.0f]
+    for (uint32_t i = 0; i < world->attraction.length; i++)
+        world->attraction.matrix[i] = SDL_randf() * 2.0f - 1.0f;
 
     return true;
 }
@@ -139,53 +150,74 @@ bool init_particles(application_t *application, uint32_t n, uint8_t num_classes)
  * particles at random positions; when it shrinks, the surplus particles are simply
  * left inactive (no reallocation occurs). Shrinking requires no buffer update.
  *
- * @param application  Pointer to the application whose particle count is updated.
- * @return             The number of newly spawned particles when growing, or 0 if
+ * @param world  Pointer to the world whose particle count is updated.
+ * @return       The number of newly spawned particles when growing, or 0 if
  *                     the count stayed the same or shrank (i.e. nothing new to upload).
  *
  * @note The caller uploads the newly spawned range to the GPU via update_particle_ssbo().
  * @see  update_particle_ssbo()
  */
-uint32_t recount_particles(application_t *application) {
-    uint32_t old_count = application->tunables.particle_count;
-    uint32_t new_count = application->tunables.new_count;
+uint32_t recount_particles(world_t *world) {
+    uint32_t old_count = world->settings.particle_count;
+    uint32_t new_count = world->settings.new_count;
     if (new_count > MAX_PARTICLES) new_count = MAX_PARTICLES;
 
     if (new_count > old_count) {
         for (uint32_t i = old_count; i < new_count; i++) {
-            application->particles[i] = new_particle(
-                (vector2D_t) { .x = SDL_rand(application->width), .y = SDL_rand(application->height) },
+            world->particles[i] = new_particle(
+                (vector2D_t) { .x = SDL_rand((int) world->settings.world_width), .y = SDL_rand((int) world->settings.world_height) },
                 (vector2D_t) { .x = 0.0f, .y = 0.0f }
             );
         }
     }
 
-    application->tunables.particle_count = new_count;
+    world->settings.particle_count = new_count;
     return (new_count > old_count) ? (new_count - old_count) : 0;
 }
 
 /**
  * shuffle_particles
  *
- * @brief Randomizes the simulation: respawns all particles and the attraction matrix.
+ * @brief Re-scatters every active particle to a new random position with zero velocity.
  *
- * Re-scatters every active particle to a new random position with zero velocity,
- * and refills the entire attraction matrix with fresh random weights in [-1, 1].
- * Used to restart the simulation from a new random configuration.
+ * Does not touch the attraction matrix; that is randomized independently via
+ * the GUI's "Randomize" button in the Attraction Matrix section, which raises
+ * dirty_matrix on its own.
  *
- * @param application  Pointer to the application to shuffle.
+ * @param world  Pointer to the world whose particles are respawned.
  *
- * @note The caller must re-upload both the particle and attraction buffers to the
- *       GPU afterwards (update_particle_ssbo(), update_attraction_ssbo()).
- * @see  update_particle_ssbo(), update_attraction_ssbo()
+ * @note The caller must re-upload the particle buffer to the GPU afterwards
+ *       (update_particle_ssbo()).
+ * @see  update_particle_ssbo()
  */
-void shuffle_particles(application_t *application) {
+void shuffle_particles(world_t *world) {
     // Shuffle Particle Parameters
-    for (uint32_t i = 0; i < application->tunables.particle_count; i++) {
-        application->particles[i] = new_particle(
-            (vector2D_t) { .x = SDL_rand(application->width), .y = SDL_rand(application->height) },
+    for (uint32_t i = 0; i < world->settings.particle_count; i++) {
+        world->particles[i] = new_particle(
+            (vector2D_t) { .x = SDL_rand((int) world->settings.world_width), .y = SDL_rand((int) world->settings.world_height) },
             (vector2D_t) { .x = 0.0f, .y = 0.0f }
         );
+    }
+}
+
+/**
+ * respawn_particles_in_world
+ *
+ * @brief Re-scatters all active particles at random positions within the current world bounds.
+ *
+ * Unlike shuffle_particles(), the attraction matrix is left untouched. Used when
+ * the world size or boundary mode changes, so existing particle positions remain
+ * valid within the new bounds.
+ *
+ * @param world  Pointer to the world whose particles are respawned.
+ */
+void respawn_particles_in_world(world_t *world) {
+    for (uint32_t i = 0; i < world->settings.particle_count; i++) {
+        world->particles[i].position = (vector2D_t) {
+            .x = SDL_rand((int) world->settings.world_width),
+            .y = SDL_rand((int) world->settings.world_height)
+        };
+        world->particles[i].velocity = (vector2D_t) { .x = 0.0f, .y = 0.0f };
     }
 }
 
@@ -194,18 +226,18 @@ void shuffle_particles(application_t *application) {
  *
  * @brief Frees the memory allocated for the particle array and attraction matrix.
  *
- * @param application  Pointer to the application state holding the particle
- *                     array and attraction matrix to free.
+ * @param world  Pointer to the world holding the particle array and attraction
+ *               matrix to free.
  * @returns 1 on success and 0 on failure
  *
  * @see init_particles()
  */
-bool destroy_particles(application_t *application) {
-    if (application->particles != NULL)
-        free(application->particles);
+bool destroy_particles(world_t *world) {
+    if (world->particles != NULL)
+        free(world->particles);
 
-    if (application->attraction.matrix != NULL) 
-        free(application->attraction.matrix);
+    if (world->attraction.matrix != NULL) 
+        free(world->attraction.matrix);
 
     return true;
 }

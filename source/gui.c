@@ -20,6 +20,18 @@
 #include "widgets.h"
 #include "particle.h"
 
+
+struct slider_text {
+    char count[TEXT_MAX_SIZE];
+    char types[TEXT_MAX_SIZE];
+    char friction[TEXT_MAX_SIZE];
+    char delta_time[TEXT_MAX_SIZE];
+    char attraction_radius[TEXT_MAX_SIZE];
+    char world_width[TEXT_MAX_SIZE];
+    char world_height[TEXT_MAX_SIZE];
+};
+static struct slider_text text = { '\0' };
+
 /**
  * init_gui
  *
@@ -39,8 +51,8 @@
  * @see  destroy_gui(), update_gui()
  */
 bool init_gui(application_t *application) {
-    application->gui_context = nk_sdl_init(application->window);
-    if (application->gui_context == NULL)
+    application->contexts.gui = nk_sdl_init(application->contexts.screen.window);
+    if (application->contexts.gui == NULL)
         return false;
 
     // Load default font
@@ -70,7 +82,6 @@ bool destroy_gui(void) {
     return true;
 }
 
-
 #define PANEL_CONTENT_RIGHT_PADDING 20
 #define DEFAULT_WIDGET_HEIGHT   35
 #define MAX_NUM_COUNT           8
@@ -82,15 +93,17 @@ bool destroy_gui(void) {
  * @brief Builds the simulation-state controls (play/pause and shuffle).
  *
  * Emits a Pause button while RUNNING or a Play button while PAUSED (toggling
- * application->state), followed by a Shuffle button that requests a randomized
- * restart by raising the shuffle flag.
+ * application->state), followed by a Shuffle button that re-scatters all
+ * particles to new random positions (raising the shuffle flag; see
+ * shuffle_particles() in particle.c) — it does not re-randomize the attraction
+ * matrix, which has its own "Randomize" button in the Attraction Matrix section.
  *
  * @param application  Pointer to the running application state.
  *
  * @note This is a static internal helper and should only be called from update_gui().
  */
 static void update_state_section(application_t *application) {
-    struct nk_context *ctx = application->gui_context;
+    nk_context_t *ctx = application->contexts.gui;
 
     // Simulation State Section
     nk_layout_row(ctx, NK_DYNAMIC, DEFAULT_WIDGET_HEIGHT, 3, (float const []) { 0.05f, 0.45f, 0.45f });
@@ -107,7 +120,8 @@ static void update_state_section(application_t *application) {
         }
     }
 
-    if (nk_button_label(ctx, "Shuffle")) application->tunables.shuffle = true;
+    if (nk_button_label(ctx, "Shuffle")) 
+        application->world.settings.shuffle = true;
 }
 
 #define SLIDER_PADDING  10
@@ -121,37 +135,39 @@ static int active_color_index = -1;
 /**
  * update_world_section
  *
- * @brief Builds the "Particle Settings" tree: count, class count, and colors.
+ * @brief Builds the "World Settings" tree: count, class count, colors, and world bounds.
  *
  * Emits the particle-count and class-count slider+textbox combos (see
  * uint_variable_slider()), raising dirty_count when either changes, a row of
- * per-class color swatches that open an extended color-picker popup, and a
- * color-preset combobox plus a randomize button. Edits write directly into the
- * tunable palette and counts.
+ * per-class color swatches that open an extended color-picker popup, a
+ * color-preset combobox plus a randomize button, an Infinite/Toroidal boundary
+ * toggle, and — when Toroidal is selected — Width/Height sliders for the
+ * wrapping world size. Toggling the boundary mode or changing a world-size
+ * slider raises dirty_world so mainloop() applies the new bounds, respawns
+ * particles within them, and refreshes the boundary outline (see
+ * update_settings() and draw_border() in application.c).
  *
  * @param application  Pointer to the running application state.
  *
  * @note This is a static internal helper and should only be called from update_gui().
  *       The currently edited swatch is tracked in the file-static active_color_index.
  */
-static void update_world_section(application_t *application) {
-    struct nk_context *ctx = application->gui_context;
-    uint32_t * const nclasses = &application->tunables.nclass;
-    uint32_t * const new_count = &application->tunables.new_count;
-    float (*palette)[NUM_CHANNELS] = application->tunables.rgba_palette;
+static void update_world_section(contexts_t *contexts, world_t *world) {
+    nk_context_t *ctx = contexts->gui;
+    uint32_t * const nclasses = &world->settings.nclass;
+    uint32_t * const new_count = &world->settings.new_count;
+    float (*palette)[NUM_CHANNELS] = world->settings.palette;
 
     // Particle Settings Section
-    if (!nk_tree_push(ctx, NK_TREE_TAB, "PARTICLE SETTINGS", NK_MAXIMIZED))
+    if (!nk_tree_push(ctx, NK_TREE_TAB, "WORLD SETTINGS", NK_MAXIMIZED))
         return;
     
     // Particle Count Label
-    static char count_slider_text[TEXT_MAX_SIZE] = { '\0' };
-    if (uint_variable_slider(ctx, "Count", 0, new_count, MAX_PARTICLES, count_slider_text))
-        application->tunables.dirty_count = true;
+    if (uint_variable_slider(ctx, "Count", 0, new_count, MAX_PARTICLES, text.count))
+        world->settings.dirty_count = true;
 
-    static char types_slider_text[TEXT_MAX_SIZE] = { '\0' };
-    if (uint_variable_slider(ctx, "Types", 1, nclasses, MAX_NUM_CLASSES, types_slider_text))
-        application->tunables.dirty_count = true;
+    if (uint_variable_slider(ctx, "Types", 1, nclasses, MAX_NUM_CLASSES, text.types))
+        world->settings.dirty_count = true;
 
     // Particle Colors Label
     nk_layout_row_static(ctx, 15, DEFAULT_PANEL_WIDTH / 2 - PANEL_CONTENT_RIGHT_PADDING, 2);
@@ -180,8 +196,9 @@ static void update_world_section(application_t *application) {
 
     // combobox and randomize button
     nk_layout_row(ctx, NK_DYNAMIC, 25, 2, (float const []) { 0.7f, 0.3f });
-    if (nk_combo_begin_label(ctx, "Color Presets",
-                              nk_vec2(DEFAULT_PANEL_WIDTH - PANEL_CONTENT_RIGHT_PADDING, 200))) {
+    if (nk_combo_begin_label(ctx, 
+                             "Color Presets",
+                             nk_vec2(DEFAULT_PANEL_WIDTH - PANEL_CONTENT_RIGHT_PADDING, 200))) {
         nk_layout_row_dynamic(ctx, 25, 1);
         for (uint8_t i = 0; i < COLOR_PRESET_COUNT; i++) {
             if (nk_combo_item_label(ctx, color_preset_names[i], NK_TEXT_LEFT)) {
@@ -196,6 +213,39 @@ static void update_world_section(application_t *application) {
             palette[i][1] = SDL_randf();
             palette[i][2] = SDL_randf();
         }
+    }
+
+    // Wall toggle
+    nk_layout_row_static(ctx, 20, DEFAULT_PANEL_WIDTH / 2 - PANEL_CONTENT_RIGHT_PADDING, 2);
+    nk_label(ctx, "Walls", NK_TEXT_ALIGN_LEFT | NK_TEXT_ALIGN_BOTTOM);
+    nk_layout_row(ctx, NK_DYNAMIC, 20, 2, (float const []) { 0.5f, 0.5f });
+
+    struct nk_style_button button = ctx->style.button;
+    button.border_color = (struct nk_color) { 255, 255, 255, 255 };
+
+    if (world->settings.boundary_mode == BOUNDARY_INFINITE) {
+        if (nk_button_text_styled(ctx, &button, "Infinite", 8)) {
+            world->settings.boundary_mode = BOUNDARY_INFINITE;
+        }
+        else if (nk_button_text(ctx, "Toroidal", 8)) {
+            world->settings.boundary_mode = BOUNDARY_TOROIDAL;
+        }
+    }
+    else {
+        if (nk_button_text(ctx, "Infinite", 8)) {
+            world->settings.boundary_mode = BOUNDARY_INFINITE;
+        }
+        else if (nk_button_text_styled(ctx, &button, "Toroidal", 8)) {
+            world->settings.boundary_mode = BOUNDARY_TOROIDAL;
+        }
+    }
+
+    // World size sliders (toroidal mode only)
+    if (world->settings.boundary_mode == BOUNDARY_TOROIDAL) {
+        if (float_variable_slider(ctx, "Width", 100.0f, &world->settings.new_world_width, MAX_WORLD_SIZE, 50.0f, text.world_width))
+            world->settings.dirty_world = true;
+        if (float_variable_slider(ctx, "Height", 100.0f, &world->settings.new_world_height, MAX_WORLD_SIZE, 50.0f, text.world_height))
+            world->settings.dirty_world = true;
     }
 
     nk_tree_pop(ctx);
@@ -223,12 +273,12 @@ static void update_world_section(application_t *application) {
  * @note This is a static internal helper and should only be called from update_gui().
  *       The selection persists across frames in a function-local static.
  */
-static void update_attraction_matrix_section(application_t *application) {
-    struct nk_context *ctx   = application->gui_context;
-    uint8_t const nclasses   = application->tunables.nclass;
+static void update_attraction_matrix_section(contexts_t *contexts, world_t *world) {
+    nk_context_t *ctx   = contexts->gui;
+    uint8_t const nclasses   = world->settings.nclass;
     uint8_t const dimensions = nclasses + 1; // +1 for column and row headers
-    attraction_t *attraction = &application->attraction;
-    float (*palette)[NUM_CHANNELS] = application->tunables.rgba_palette;
+    attraction_t *attraction = &world->attraction;
+    float (*palette)[NUM_CHANNELS] = world->settings.palette;
     
     // Attraction Matrix Section
     if (!nk_tree_push(ctx, NK_TREE_TAB, "ATTRACTION MATRIX", NK_MINIMIZED))
@@ -264,12 +314,10 @@ static void update_attraction_matrix_section(application_t *application) {
             .a = (nk_byte) (COLOR_RANGE) } );
     }
 
-    if (cell_editor(ctx, attraction, cell_data, active, affected)) {
-        application->tunables.dirty_matrix = true;
-    }
-    if (grid_preset_randomize(ctx, attraction)) {
-        application->tunables.dirty_matrix = true;
-    }
+    if (cell_editor(ctx, attraction, cell_data, active, affected))
+        world->settings.dirty_matrix = true;
+    if (grid_preset_randomize(ctx, attraction)) 
+        world->settings.dirty_matrix = true;
 
     nk_tree_pop(ctx);
 }
@@ -277,37 +325,34 @@ static void update_attraction_matrix_section(application_t *application) {
 /**
  * update_physics_section
  *
- * @brief Builds the "Physics" tree: friction, delta time, and attraction radius sliders.
+ * @brief Builds the "Physics" tree: friction, speed, and attraction radius sliders.
  *
  * Emits three sliders that write directly into the physics tunables. These feed the
  * compute shader as uniforms each frame, so changes take effect immediately without
  * a dirty flag.
  *
+ * "Friction" is a decay rate in 1/seconds (0 = no damping, higher = more damping),
+ * and "Speed" is a multiplier applied to the real elapsed time measured each frame
+ * in mainloop() (application.c), not a raw per-frame time step.
+ *
  * @param application  Pointer to the running application state.
  *
  * @note This is a static internal helper and should only be called from update_gui().
  */
-static void update_physics_section(application_t *application) {
-    struct nk_context *ctx = application->gui_context;
-    float *friction  = &application->tunables.friction_halflife;
-    float *deltatime = &application->tunables.delta_time;
-    float *aradius   = &application->tunables.attraction_radius;
+static void update_physics_section(contexts_t *contexts, world_t *world) {
+    nk_context_t *ctx = contexts->gui;
+    float *friction  = &world->settings.friction;
+    float *deltatime = &world->settings.delta_time;
+    float *aradius   = &world->settings.attraction_radius;
 
     // Physics Section
     if (!nk_tree_push(ctx, NK_TREE_TAB, "PHYSICS", NK_MAXIMIZED))
         return;
 
-    // Friction Half Life
-    static char friction_slider_text[TEXT_MAX_SIZE] = { '\0' };
-    float_variable_slider(ctx, "Friction", 0.0f, friction, 3.0f, 0.25f, friction_slider_text);
-    
-    // Delta Time
-    static char dt_slider_text[TEXT_MAX_SIZE] = { '\0' };
-    float_variable_slider(ctx, "Delta Time", 0.025f, deltatime, 1.0f, 0.025f, dt_slider_text);
-
-    // Attraction Radius
-    static char ar_slider_text[TEXT_MAX_SIZE] = { '\0' };
-    float_variable_slider(ctx, "Max Radius", 0.0f, aradius, 200.0f, 5.0f, ar_slider_text);
+    // sliders
+    float_variable_slider(ctx, "Friction", 0.0f, friction, 5.0f, 0.25f, text.friction);
+    float_variable_slider(ctx, "Speed", 0.5f, deltatime, 20.0f, 0.5f, text.delta_time);
+    float_variable_slider(ctx, "Max Radius", 0.0f, aradius, 300.0f, 5.0f, text.attraction_radius);
 
     nk_tree_pop(ctx);
 }
@@ -329,13 +374,15 @@ static void update_physics_section(application_t *application) {
  * @see  init_gui(), mainloop()
  */
 void update_gui(application_t *application) {
-    if (nk_begin(application->gui_context, "Control Panel", nk_rect(0, 0, DEFAULT_PANEL_WIDTH, application->height), 
+    contexts_t *ctx = &application->contexts;
+    
+    if (nk_begin(ctx->gui, "Control Panel", nk_rect(0, 0, DEFAULT_PANEL_WIDTH, ctx->screen.height), 
         NK_WINDOW_BORDER | NK_WINDOW_TITLE | NK_WINDOW_MINIMIZABLE)
     ) {
         update_state_section(application);
-        update_world_section(application);
-        update_attraction_matrix_section(application);
-        update_physics_section(application);
+        update_world_section(&application->contexts, &application->world);
+        update_attraction_matrix_section(&application->contexts, &application->world);
+        update_physics_section(&application->contexts, &application->world);
     }
-    nk_end(application->gui_context);
+    nk_end(ctx->gui);
 }

@@ -13,7 +13,7 @@
 #include "widgets.h"
 #include "nuklear.h"
 
-#define DEFAULT_ROUNDING            13.5f
+#define DEFAULT_ROUNDING    13.5f
 
 /**
  * circular_button

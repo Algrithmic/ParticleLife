@@ -10,7 +10,6 @@
 #include <math.h>
 #include <cglm/cglm.h>
 
-#include "SDL.h"
 #include "SDL_video.h"
 
 #include "glad/glad.h"
@@ -41,6 +40,8 @@
 bool init_application(application_t *application) {
     if (application->state != UNINITIALIZED) return 0;
 
+    contexts_t *ctxs = &application->contexts;
+
     // Initialize SDL subsystems
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         printf("SDL Initialization failed. ERROR: %s\n", SDL_GetError());
@@ -51,31 +52,35 @@ bool init_application(application_t *application) {
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 
-    application->height = DEFAULT_HEIGHT;
-    application->width = DEFAULT_WIDTH;
-    
+    ctxs->screen.height = DEFAULT_HEIGHT;
+    ctxs->screen.width  = DEFAULT_WIDTH;
+
+    ctxs->camera.x    = 0.0f;
+    ctxs->camera.y    = 0.0f;
+    ctxs->camera.zoom = 1.0f;
+
     // initialize the window
-    application->window = SDL_CreateWindow("Particle Life", DEFAULT_WIDTH, DEFAULT_HEIGHT, 
+    ctxs->screen.window = SDL_CreateWindow("Particle Life", DEFAULT_WIDTH, DEFAULT_HEIGHT, 
         SDL_WINDOW_OPENGL | SDL_WINDOW_HIGH_PIXEL_DENSITY);
-    if (application->window == NULL) {
+    if (ctxs->screen.window == NULL) {
         printf("Window Creation failed. ERROR: %s\n", SDL_GetError());
         SDL_Quit();
         return false;
     }
-    SDL_GetWindowSizeInPixels(application->window, &application->width, &application->height);
+    SDL_GetWindowSizeInPixels(ctxs->screen.window, &ctxs->screen.width, &ctxs->screen.height);
 
-    if (!SDL_SetWindowResizable(application->window, true)) {
+    if (!SDL_SetWindowResizable(ctxs->screen.window, true)) {
         printf("Unable to set window resizable. ERROR: %s\n", SDL_GetError());
-        SDL_DestroyWindow(application->window);
+        SDL_DestroyWindow(ctxs->screen.window);
         SDL_Quit();
         return false;
     }
 
     // Initialize the renderer
-    application->gl_context = SDL_GL_CreateContext(application->window);
-    if (application->gl_context == NULL) {
+    ctxs->gl = SDL_GL_CreateContext(ctxs->screen.window);
+    if (ctxs->gl == NULL) {
         printf("Renderer Creation failed. ERROR: %s\n", SDL_GetError());
-        SDL_DestroyWindow(application->window);
+        SDL_DestroyWindow(ctxs->screen.window);
         SDL_Quit();
         return false;
     }
@@ -86,13 +91,35 @@ bool init_application(application_t *application) {
     }
 
     // Initialize text input to the application
-    if (!SDL_StartTextInput(application->window)) {
+    if (!SDL_StartTextInput(ctxs->screen.window)) {
         printf("Unable to start text input. ERROR: %s\n", SDL_GetError());
     }
 
     application->state = RUNNING;
 
     return true;
+}
+
+/**
+ * build_projection
+ *
+ * @brief Builds the world-space-to-clip-space ortho matrix for the current camera.
+ *
+ * Maps the window's pixel rectangle to the world-space rectangle
+ * [camera.x, camera.x + width/zoom] x [camera.y, camera.y + height/zoom], so
+ * world coordinates render at true 1:1 scale when zoom == 1.0, panned by
+ * camera.x/y and scaled by camera.zoom otherwise.
+ *
+ * @param screen  Current window/screen dimensions.
+ * @param camera  Current pan/zoom camera state.
+ * @param out     Output 4x4 matrix.
+ */
+static void build_projection(screen_t screen, camera_t camera, mat4 out) {
+    float left   = camera.x;
+    float right  = camera.x + (float) screen.width  / camera.zoom;
+    float top    = camera.y;
+    float bottom = camera.y + (float) screen.height / camera.zoom;
+    glm_ortho(left, right, bottom, top, -1.0f, 1.0f, out);
 }
 
 #define STARTING_COUNT      1000
@@ -103,10 +130,11 @@ bool init_application(application_t *application) {
  *
  * @brief Initializes the simulation particles and GPU resources.
  *
- * Allocates and uploads particles to the GPU via SSBOs, sets up graphics and
- * compute shader programs, configures vertex attributes, and uploads the
- * attraction matrix. The application window must already be initialized before
- * calling this function.
+ * Allocates and uploads particles to the GPU via SSBOs, sets up the graphics and
+ * compute shader programs, configures vertex attributes, uploads the attraction
+ * matrix, and builds the toroidal world-boundary outline program (see
+ * init_border()/update_border_vbo() in shaders.c). The application window must
+ * already be initialized before calling this function.
  *
  * @param application  Pointer to the initialized application state.
  * @return             1 on success, 0 if shader initialization fails.
@@ -116,33 +144,40 @@ bool init_application(application_t *application) {
  * @see  init_application()
  */
 bool init_simulation(application_t *application) {
-    if (!init_particles(application, STARTING_COUNT, STARTING_CLASSES)) {
+    if (!init_particles(&application->world, STARTING_COUNT, STARTING_CLASSES)) {
         printf("Simulation Initialization failed.");
         return false;
     }
 
-    if (!init_graphics(application,  2,  "./shaders/particle.vert",  "./shaders/particle.frag")) {
+    if (!init_graphics(&application->shaders, &application->world, 2, "./shaders/particle.vert", "./shaders/particle.frag")) {
         printf("ERROR: Failed to initialize graphics shaders\n");
         return false;
     }
 
-    // Set the initial projection — the window size is already known
-    glUseProgram(application->shader_data.graphics_program);
-    mat4 projection;
-    glm_ortho(0.0f, (float) application->width, (float) application->height, 0.0f, -1.0f, 1.0f, projection);
+    if (!init_border(&application->shaders)) {
+        printf("ERROR: Failed to initialize border shaders\n");
+        return false;
+    }
+    update_border_vbo(&application->shaders,
+        application->world.settings.world_width, application->world.settings.world_height);
+
+    // Set the initial projection — the window size and camera are already known
+    glUseProgram(application->shaders.graphics);
+    mat4 projection = { 0 };
+    build_projection(application->contexts.screen, application->contexts.camera, projection);
     glUniformMatrix4fv(
-        glGetUniformLocation(application->shader_data.graphics_program, "projection"),
+        glGetUniformLocation(application->shaders.graphics, "projection"),
         1, GL_FALSE, (float *) projection
     );
 
     // Compute Shader initialization
-    if (!init_compute(&application->shader_data, "./shaders/particle.comp")) {
+    if (!init_compute(&application->shaders, "./shaders/particle.comp")) {
         printf("ERROR: Failed to initialize compute shaders\n");
         return false;
     }
 
     // Shader Storage Buffer Objects
-    if (!init_buffers(application)) {
+    if (!init_buffers(&application->shaders, &application->world)) {
         printf("ERROR: Failed to initialize shader storage buffer objects");
         return false;
     }
@@ -170,16 +205,17 @@ bool destroy_application(application_t *application) {
 
     destroy_gui();
 
-    if (application->gl_context) 
-        SDL_GL_DestroyContext(application->gl_context);
+    if (application->contexts.gl) 
+        SDL_GL_DestroyContext(application->contexts.gl);
 
+    screen_t *screen = &application->contexts.screen;
     // Destroy Window
-    if (application->window) {
-        SDL_DestroyWindow(application->window);
-        application->window = NULL;
+    if (screen->window) {
+        SDL_DestroyWindow(screen->window);
+        screen->window = NULL;
     }
 
-    destroy_particles(application);
+    destroy_particles(&application->world);
     
     // Quit subsystems
     SDL_Quit();
@@ -194,9 +230,15 @@ bool destroy_application(application_t *application) {
  * @brief Polls and dispatches SDL events for the current frame.
  *
  * Handles window quit requests, window resize events (updating the OpenGL
- * viewport and projection matrix), and mouse events. Every event is also
- * forwarded to Nuklear, wrapped in nk_input_begin()/nk_input_end(), so the GUI
- * can capture input. Unrecognized events are silently ignored.
+ * viewport; the projection matrix itself is rebuilt every frame in
+ * update_graphics() from the current screen size and camera), and mouse events
+ * that drive the pan/zoom camera: left-drag pans (contexts->camera.x/y) and the
+ * scroll wheel zooms (contexts->camera.zoom), anchored on the screen center so
+ * the world point under it stays fixed. Both are skipped while the pointer is
+ * over the Nuklear panel, so dragging/scrolling the GUI doesn't also move the
+ * camera. Every event is also forwarded to Nuklear, wrapped in
+ * nk_input_begin()/nk_input_end(), so the GUI can capture input. Unrecognized
+ * events are silently ignored.
  *
  * @param application  Pointer to the running application state.
  *
@@ -205,8 +247,9 @@ bool destroy_application(application_t *application) {
  *          mainloop() to exit on the next iteration.
  */
 static void handle_events(application_t *application) {
+    contexts_t *ctxs = &application->contexts;
     SDL_Event e;
-    nk_input_begin(application->gui_context);
+    nk_input_begin(ctxs->gui);
     while (SDL_PollEvent(&e)) {
         switch (e.type) {
             case SDL_EVENT_QUIT: {
@@ -214,31 +257,44 @@ static void handle_events(application_t *application) {
                 break;
             }
             case SDL_EVENT_WINDOW_RESIZED: {
-                SDL_GetWindowSizeInPixels(application->window, &application->width, &application->height);
-                glViewport(0, 0, application->width, application->height);
-
-                // Bind new screen size to graphics program immediately
-                glUseProgram(application->shader_data.graphics_program);
-                mat4 projection;
-                glm_ortho(0.0f, (float) application->width, (float) application->height, 0.0f, -1.0f, 1.0f, projection);
-                glUniformMatrix4fv(
-                    glGetUniformLocation(application->shader_data.graphics_program, "projection"),
-                    1, GL_FALSE, (float *) projection
-                );
+                SDL_GetWindowSizeInPixels(ctxs->screen.window, &ctxs->screen.width, &ctxs->screen.height);
+                glViewport(0, 0, ctxs->screen.width, ctxs->screen.height);
                 break;
             }
+            case SDL_EVENT_MOUSE_MOTION: {
+                if ((e.motion.state & SDL_BUTTON_LMASK) && !nk_window_is_any_hovered(ctxs->gui)) {
+                    ctxs->camera.x -= e.motion.xrel / ctxs->camera.zoom;
+                    ctxs->camera.y -= e.motion.yrel / ctxs->camera.zoom;
+                }
+                break;
+            }
+            case SDL_EVENT_MOUSE_WHEEL: {
+                if (nk_window_is_any_hovered(ctxs->gui)) break;
 
-            // @todo: next feature - mouse interaction. zoom in and zoom out?
-            case SDL_EVENT_MOUSE_MOTION:
-            case SDL_EVENT_MOUSE_BUTTON_DOWN:
-            case SDL_EVENT_MOUSE_BUTTON_UP:
-                break; 
+                float const zoom_step = 1.1f;
+                float const min_zoom  = 0.1f;
+                float const max_zoom  = 10.0f;
+                float factor = (e.wheel.y > 0.0f) ? zoom_step : 1.0f / zoom_step;
+
+                float old_zoom = ctxs->camera.zoom;
+                float new_zoom = old_zoom * factor;
+                if (new_zoom < min_zoom) new_zoom = min_zoom;
+                if (new_zoom > max_zoom) new_zoom = max_zoom;
+
+                // Keep the world point under the screen center fixed while zooming.
+                float center_x = ctxs->camera.x + (ctxs->screen.width  / 2.0f) / old_zoom;
+                float center_y = ctxs->camera.y + (ctxs->screen.height / 2.0f) / old_zoom;
+                ctxs->camera.zoom = new_zoom;
+                ctxs->camera.x = center_x - (ctxs->screen.width  / 2.0f) / new_zoom;
+                ctxs->camera.y = center_y - (ctxs->screen.height / 2.0f) / new_zoom;
+                break;
+            }
             default: break;
         }
 
         nk_sdl_handle_event(&e);
     }
-    nk_input_end(application->gui_context);
+    nk_input_end(application->contexts.gui);
 }
 
 /**
@@ -250,46 +306,132 @@ static void handle_events(application_t *application) {
  * compute workgroup per 256 particles, and issues a memory barrier so the
  * updated particle data is visible to the subsequent draw.
  *
- * @param application  Pointer to the running application state.
+ * @param shaders  Pointer to the shader state holding the compute program.
+ * @param world    Pointer to the world whose tunables are uploaded.
+ * @param dt       Simulation time step for this frame, in seconds: measured
+ *                 real elapsed time scaled by the user's speed setting.
  *
  * @note This is a static internal function and should only be called from mainloop().
  * @see  update_graphics()
  */
-static void update_physics(application_t *application) {
-    glUseProgram(application->shader_data.compute_program);
-    glUniform1ui(glGetUniformLocation(application->shader_data.compute_program, "maxClass"),    MAX_NUM_CLASSES);
-    glUniform1ui(glGetUniformLocation(application->shader_data.compute_program, "nClass"),      application->tunables.nclass);
-    glUniform1ui(glGetUniformLocation(application->shader_data.compute_program, "count"),       application->tunables.particle_count);
-    glUniform1f (glGetUniformLocation(application->shader_data.compute_program, "deltaTime"),   application->tunables.delta_time);
-    glUniform1f (glGetUniformLocation(application->shader_data.compute_program, "frictionFactor"),  application->tunables.friction_halflife);
-    glUniform1f (glGetUniformLocation(application->shader_data.compute_program, "attractionRadius"),application->tunables.attraction_radius);
-    glUniform2f (glGetUniformLocation(application->shader_data.compute_program, "screenSize"),  (float)application->width, (float)application->height);
-    glDispatchCompute((application->tunables.particle_count + 255) / 256, 1, 1);
+static void update_physics(shader_t *shaders, world_t *world, float dt) {
+    glUseProgram(shaders->compute);
+
+    glUniform1ui(glGetUniformLocation(shaders->compute, "maxClass"),    MAX_NUM_CLASSES);
+    glUniform1ui(glGetUniformLocation(shaders->compute, "nClass"),      world->settings.nclass);
+    glUniform1ui(glGetUniformLocation(shaders->compute, "count"),       world->settings.particle_count);
+    glUniform1f (glGetUniformLocation(shaders->compute, "deltaTime"),   dt);
+    glUniform1f (glGetUniformLocation(shaders->compute, "frictionRate"),  world->settings.friction);
+    glUniform1f (glGetUniformLocation(shaders->compute, "attractionRadius"),world->settings.attraction_radius);
+    glUniform2f (glGetUniformLocation(shaders->compute, "worldSize"),
+        world->settings.world_width, world->settings.world_height);
+    glUniform1i (glGetUniformLocation(shaders->compute, "infinite"),
+        world->settings.boundary_mode == BOUNDARY_INFINITE);
+
+    glDispatchCompute((world->settings.particle_count + 255) / 256, 1, 1);
     glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT);
 }
 
 /**
  * update_graphics
  *
- * @brief Renders all particles for the current frame via instanced drawing.
+ * @brief Renders all particles, and the world-boundary outline, for the current frame.
  *
- * Binds the graphics program and VAO, uploads the color palette and radius
- * uniforms, and draws every particle in a single instanced draw call.
+ * Rebuilds the world-to-clip-space projection from the current screen size and
+ * camera (see build_projection()), binds the graphics program and VAO, uploads
+ * the projection/palette/radius uniforms, and draws every particle in a single
+ * instanced draw call. When boundary_mode is BOUNDARY_TOROIDAL, also draws the
+ * white boundary rectangle via draw_border(), reusing the same projection.
  *
- * @param application  Pointer to the running application state.
+ * @param shaders  Pointer to the shader state holding the graphics/border programs.
+ * @param world    Pointer to the world holding the particles, palette, and boundary mode.
+ * @param screen   Current window/screen dimensions.
+ * @param camera   Current pan/zoom camera state.
  *
  * @note This is a static internal function and should only be called from mainloop().
- * @see  update_physics()
+ * @see  update_physics(), build_projection(), draw_border()
  */
-static void update_graphics(application_t *application) {
-    glUseProgram(application->shader_data.graphics_program);
-    glBindVertexArray(application->shader_data.vao);
-    glUniform4fv(glGetUniformLocation(application->shader_data.graphics_program, "palette"), MAX_NUM_CLASSES, &application->tunables.rgba_palette[0][0]);
-    glUniform1f(glGetUniformLocation(application->shader_data.graphics_program, "radius"), RADIUS);
-    glUniform1ui(glGetUniformLocation(application->shader_data.graphics_program, "nclass"), application->tunables.nclass);
+static void update_graphics(shader_t *shaders, world_t *world, screen_t screen, camera_t camera) {
+    glUseProgram(shaders->graphics);
+    glBindVertexArray(shaders->vao);
 
-    glDrawArraysInstanced(GL_TRIANGLE_FAN, 0, NUM_COORDINATES, application->tunables.particle_count);
+    mat4 projection = { 0 };
+    build_projection(screen, camera, projection);
+    glUniformMatrix4fv(
+        glGetUniformLocation(shaders->graphics, "projection"),
+        1, GL_FALSE, (float *) projection
+    );
+
+    glUniform4fv(glGetUniformLocation(shaders->graphics, "palette"), MAX_NUM_CLASSES, &world->settings.palette[0][0]);
+    glUniform1f(glGetUniformLocation(shaders->graphics, "radius"), RADIUS);
+    glUniform1ui(glGetUniformLocation(shaders->graphics, "nclass"), world->settings.nclass);
+
+    glDrawArraysInstanced(GL_TRIANGLE_FAN, 0, NUM_COORDINATES, world->settings.particle_count);
+
+    if (world->settings.boundary_mode == BOUNDARY_TOROIDAL)
+        draw_border(shaders, (float *) projection);
 }
+
+/**
+ * update_settings
+ *
+ * @brief Applies any pending GUI-driven changes to the simulation and its GPU buffers.
+ *
+ * Checks each dirty flag in world->settings and, if set, applies the pending
+ * change and clears the flag:
+ * - dirty_count: resizes the active particle count (recount_particles()) and
+ *   uploads any newly spawned particles.
+ * - dirty_matrix: re-uploads the full attraction matrix.
+ * - dirty_world: applies the pending world_width/world_height, respawns all
+ *   particles within the new bounds (respawn_particles_in_world()), re-uploads
+ *   them, and refreshes the boundary-outline VBO (update_border_vbo()) so it
+ *   matches the new size.
+ * - shuffle: respawns all particles and re-uploads them. Does not touch the
+ *   attraction matrix — that's a separate "Randomize" button that sets
+ *   dirty_matrix directly (see update_attraction_matrix_section() in gui.c).
+ *
+ * @param shaders  Pointer to the shader state holding the SSBOs and border VBO.
+ * @param world    Pointer to the world whose settings/particles are updated.
+ *
+ * @note This is a static internal function and should only be called from mainloop().
+ */
+static void update_settings(shader_t *shaders, world_t *world) {
+    if (world->settings.dirty_count) {
+        uint32_t old_count = world->settings.particle_count;
+        uint32_t grown_count = recount_particles(world);
+        if (grown_count > 0)
+            update_particle_ssbo(shaders, world, old_count, grown_count);
+        world->settings.dirty_count = false;
+    }
+    if (world->settings.dirty_matrix) {
+        update_attraction_ssbo(shaders, world);
+        world->settings.dirty_matrix = false;
+    }
+    if (world->settings.dirty_world) {
+        world->settings.world_width  = world->settings.new_world_width;
+        world->settings.world_height = world->settings.new_world_height;
+        respawn_particles_in_world(world);
+        update_particle_ssbo(
+            shaders,
+            world,
+            0,
+            world->settings.particle_count);
+        update_border_vbo(shaders, world->settings.world_width, world->settings.world_height);
+        world->settings.dirty_world = false;
+    }
+    if (world->settings.shuffle) {
+        shuffle_particles(world);
+        update_particle_ssbo(
+            shaders, 
+            world, 
+            0, 
+            world->settings.particle_count);
+        world->settings.shuffle = false;
+    }
+}
+
+#define RGBA_BLACK  0.0f, 0.0f, 0.0f, 1.0f
+#define MAX_FRAME_TIME  (1.0f / 15.0f)  ///< Clamp on measured elapsed time, to avoid a sim jump after a stall.
 
 /**
  * mainloop
@@ -308,40 +450,39 @@ static void update_graphics(application_t *application) {
  *       init_simulation(), and the GUI via init_gui(), before calling.
  * @note nk_sdl_render() both draws the GUI and closes out the Nuklear frame; it
  *       must run every iteration or the next frame's nk_begin() will assert.
+ * @note The physics step is driven by measured wall-clock time (scaled by the
+ *       user's speed setting), clamped to MAX_FRAME_TIME, so simulation speed
+ *       stays consistent across machines and framerates rather than being tied
+ *       to a fixed per-frame step.
  * @see  handle_events(), update_physics(), update_graphics(), init_simulation()
  */
 bool mainloop(application_t *application) {
+    uint64_t last_ticks = SDL_GetPerformanceCounter();
+    uint64_t const ticks_per_second = SDL_GetPerformanceFrequency();
+
     while (application->state == RUNNING || application->state == PAUSED) {
+        uint64_t const now_ticks = SDL_GetPerformanceCounter();
+        float elapsed = (float) (now_ticks - last_ticks) / (float) ticks_per_second;
+        last_ticks = now_ticks;
+        if (elapsed > MAX_FRAME_TIME) elapsed = MAX_FRAME_TIME;
+
         handle_events(application);
         update_gui(application);
-        if (application->tunables.dirty_count) {
-            uint32_t old_count = application->tunables.particle_count;
-            uint32_t grown_count = recount_particles(application);
-            if (grown_count > 0) 
-                update_particle_ssbo(application, old_count, grown_count);
-            application->tunables.dirty_count = false;
-        }
-        if (application->tunables.dirty_matrix) {
-            update_attraction_ssbo(application);
-            application->tunables.dirty_matrix = false;
-        }
-        if (application->tunables.shuffle) {
-            shuffle_particles(application);
-            update_particle_ssbo(application, 0, application->tunables.particle_count);
-            application->tunables.shuffle = false;
-        }
+        update_settings(&application->shaders, &application->world);
 
         // Set draw color to black and clear
-        glClearColor(RGBA_BLACK);  // R, G, B, A
+        glClearColor(RGBA_BLACK);
         glClear(GL_COLOR_BUFFER_BIT);
-        
+
         if (application->state == RUNNING)
-            update_physics(application);
-        update_graphics(application);
+            update_physics(&application->shaders, &application->world,
+                elapsed * application->world.settings.delta_time);
+        update_graphics(&application->shaders, &application->world,
+            application->contexts.screen, application->contexts.camera);
 
         nk_sdl_render(NK_ANTI_ALIASING_ON, MAX_VERTEX_MEMORY, MAX_ELEMENT_MEMORY);
 
-        SDL_GL_SwapWindow(application->window);
+        SDL_GL_SwapWindow(application->contexts.screen.window);
     }
 
     return true;
