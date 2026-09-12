@@ -14,6 +14,18 @@ ifeq ($(OS),Windows_NT)
 	EXE_EXT := .exe
 	# SDL3.dll must sit next to the exe (or be on PATH) since Windows has no rpath
 	POST_BUILD := cp -u $(VENDOR_DIR)/SDL3/libraries/SDL3.dll $(BUILD_DIR)/
+
+	# Always build with the MinGW-w64 compiler directly instead of trusting `gcc` on PATH.
+	ifneq ($(wildcard /mingw64/bin/gcc.exe),)
+		CC := /mingw64/bin/gcc.exe
+	endif
+
+	CC_MACHINE := $(shell $(CC) -dumpmachine 2>/dev/null)
+	ifeq (,$(findstring mingw32,$(CC_MACHINE)))
+	$(error `gcc` resolved to target '$(CC_MACHINE)', not MinGW-w64. Install \
+	the toolchain from the MSYS2 MINGW64 shell: pacman -S mingw-w64-x86_64-gcc. \
+	See "Building on Windows" in README.md)
+	endif
 else
 	RPATH := -Wl,-rpath,'$$ORIGIN/../vendor/SDL3/libraries'
 	POST_BUILD := true
