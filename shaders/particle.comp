@@ -37,6 +37,9 @@ uniform float   attractionRadius;
 uniform vec2    worldSize;
 uniform bool    infinite;
 
+/// Softening length: keeps 1/distance finite when two particles nearly coincide.
+const float MIN_DIST = 1e-4;
+
 /**
  * forceFn
  *
@@ -83,21 +86,13 @@ void main() {
             if (delta.y < -worldSize.y / 2.0) delta.y += worldSize.y;
         }
 
-        float dist = length(delta);
-        if (dist > attractionRadius) continue;  // outside interaction range
+        float distance = sqrt(dot(delta, delta) + MIN_DIST * MIN_DIST);
+        if (distance > attractionRadius) continue;  // outside interaction range
 
         float alpha = matrix[colorClass_i * maxClass + colorClass_j];
+        vec2 dir = delta / distance;
 
-        vec2 dir;
-        if (dist > 1e-4) {
-            dir = delta / dist;
-        } 
-        else {
-            dir  = vec2((i > j) ? 1.0 : -1.0, 0.0);
-            dist = 1e-4;
-        }
-
-        float f = forceFn(dist / attractionRadius, alpha);
+        float f = forceFn(distance / attractionRadius, alpha);
         acceleration += dir * f;
     }
 

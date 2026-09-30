@@ -366,6 +366,10 @@ static void update_graphics(shader_t *shaders, world_t *world, screen_t screen, 
     glUniform1f(glGetUniformLocation(shaders->graphics, "radius"), RADIUS);
     glUniform1ui(glGetUniformLocation(shaders->graphics, "nclass"), world->settings.nclass);
 
+    // Blend alpha channels
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
     glDrawArraysInstanced(GL_TRIANGLE_FAN, 0, NUM_COORDINATES, world->settings.particle_count);
 
     if (world->settings.boundary_mode == BOUNDARY_TOROIDAL)

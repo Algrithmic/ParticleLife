@@ -172,14 +172,14 @@ static void update_world_section(contexts_t *contexts, world_t *world) {
     // Particle Colors Label
     nk_layout_row_static(ctx, 15, DEFAULT_PANEL_WIDTH / 2 - PANEL_CONTENT_RIGHT_PADDING, 2);
     nk_label(ctx, "Colors", NK_TEXT_ALIGN_LEFT | NK_TEXT_ALIGN_BOTTOM);
-    // For each color type, display a circle with each corresponding color
+    // For each color type, display a label with each corresponding color
     nk_layout_row_dynamic(ctx, DEFAULT_WIDGET_HEIGHT, *nclasses);
     for (size_t i = 0; i < *nclasses; i++) {
         if (nk_button_color(ctx, (struct nk_color) {
             .r = (nk_byte) (COLOR_RANGE * palette[i][0]),
             .g = (nk_byte) (COLOR_RANGE * palette[i][1]),
             .b = (nk_byte) (COLOR_RANGE * palette[i][2]),
-            .a = (nk_byte) (COLOR_RANGE)
+            .a = (nk_byte) (COLOR_RANGE * palette[i][3])
         } )) {
             active_color_index = (int) i;
         }
@@ -212,6 +212,7 @@ static void update_world_section(contexts_t *contexts, world_t *world) {
             palette[i][0] = SDL_randf();
             palette[i][1] = SDL_randf();
             palette[i][2] = SDL_randf();
+            palette[1][3] = 1.0f;
         }
     }
 
